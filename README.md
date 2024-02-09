@@ -1,0 +1,1 @@
+# magpanel-go
