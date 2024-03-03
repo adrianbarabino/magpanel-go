@@ -618,7 +618,7 @@ func requestPasswordRecovery(w http.ResponseWriter, r *http.Request) {
 func getUsers(w http.ResponseWriter, r *http.Request) {
 	var users []User
 
-	rows, err := db.Query("SELECT id, username, rank, email, name, recovery_hash, created_at, updated_at FROM users")
+	rows, err := db.Query("SELECT `id`, `username`, `rank`, `email`, `name`, `recovery_hash`, `created_at`, `updated_at` FROM users")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
