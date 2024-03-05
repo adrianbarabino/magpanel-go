@@ -832,7 +832,7 @@ func getUserByID(w http.ResponseWriter, r *http.Request) {
 	var createdAt, updatedAt []byte // Usar []byte para leer los valores de fecha y hora
 	var recoveryHash sql.NullString // Usar sql.NullString para manejar valores NULL
 
-	err := db.QueryRow("SELECT id, username, rank, email, name, password_hash, recovery_hash, created_at, updated_at FROM users WHERE id = ?", userID).Scan(&u.ID, &u.Username, &u.Rank, &u.Email, &u.Name, &u.PasswordHash, &recoveryHash, &createdAt, &updatedAt)
+	err := db.QueryRow("SELECT `id`, `username`, `rank`, `email`, `name`, `password_hash`, `recovery_hash`, `created_at`, `updated_at` FROM users WHERE id = ?", userID).Scan(&u.ID, &u.Username, &u.Rank, &u.Email, &u.Name, &u.PasswordHash, &recoveryHash, &createdAt, &updatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Usuario no encontrado", http.StatusNotFound)
