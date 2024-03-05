@@ -674,10 +674,10 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		newSalt := generateSalt()
 		newHashedPassword := hashPassword(u.PasswordHash, newSalt)
 
-		query = "UPDATE users SET username = ?, rank = ?, email = ?, name = ?, password_hash = ?, salt = ? WHERE id = ?"
+		query = "UPDATE users SET `username` = ?, `rank` = ?, `email` = ?, `name` = ?, `password_hash` = ?, `salt` = ? WHERE `id` = ?"
 		args = append(args, u.Username, u.Rank, u.Email, u.Name, newHashedPassword, newSalt, userID)
 	} else {
-		query = "UPDATE users SET username = ?, rank = ?, email = ?, name = ? WHERE id = ?"
+		query = "UPDATE users SET `username` = ?, `rank` = ?, `email` = ?, `name` = ? WHERE `id` = ?"
 		args = append(args, u.Username, u.Rank, u.Email, u.Name, userID)
 	}
 
@@ -733,7 +733,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	// log.Println("Salt almacenado:", salt)
 	// log.Println("Contraseña cruda almacenado:", u.PasswordHash)
 
-	stmt, err := db.Prepare("INSERT INTO users (username, rank, email, name, password_hash, salt) VALUES (?, ?, ?, ?, ?, ?)")
+	stmt, err := db.Prepare("INSERT INTO users (`username`, `rank`, `email`, `name`, `password_hash`, `salt`) VALUES (?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
