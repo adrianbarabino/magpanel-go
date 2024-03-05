@@ -45,3 +45,42 @@ La API está alojada en `api.mag-servicios.com` y expone los siguientes endpoint
 - `GET /categories/{id}`: Obtiene una categoría por ID.
 - `PUT /categories/{id}`: Actualiza una categoría por ID.
 - `DELETE /categories/{id}`: Elimina una categoría por ID.
+
+### Users
+
+- `GET /users`: Obtiene todos los usuarios.
+- `POST /users`: Crea un nuevo usuario.
+- `GET /users/{id}`: Obtiene un usuario por ID.
+- `PUT /users/{id}`: Actualiza un usuario por ID.
+- `DELETE /users/{id}`: Elimina un usuario por ID.
+
+### Authentication
+
+- `POST /login`: Autentica un usuario y genera un token de acceso.
+
+## To-Do
+
+### Endpoints
+
+- `GET /profile`: Obtiene el perfil del usuario autenticado.
+- `GET /logs`: Obtiene los registros del sistema.
+- `GET /datasets`: Obtiene las tablas del sistema.
+- `POST /project/{id}/create-report`: Crea un reporte en un proyecto.
+- `PUT /project/{id}/edit-report/{id}`: Actualiza un reporte en un proyecto.
+- `DELETE /project/{id}/delete-report/{id}`: Elimina un reporte en un proyecto.
+
+
+### Otros
+
+- Implementar logs del sistema.
+- Implementar tablas del sistema.
+
+## Instalación
+
+### Requerimientos
+
+- Go
+- MySQL
+- Git
+
+
