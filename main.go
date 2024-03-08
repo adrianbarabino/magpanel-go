@@ -14,8 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	"golang.org/x/crypto/argon2"
+	"golang.org/x/time/rate"
 
 	"github.com/mailgun/mailgun-go"
 	"gopkg.in/ini.v1"
@@ -50,6 +51,15 @@ type Client struct {
 	CreatedAt  string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 	UpdatedAt  string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 }
+type Log struct {
+	ID        int    `json:"id"`
+	Type      string `json:"type"`
+	OldValue  string `json:"old_value"`
+	NewValue  string `json:"new_value"`
+	UserID    int    `json:"user_id"`
+	Username  string `json:"username,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
 type Category struct {
 	ID     int            `json:"id"`
 	Type   string         `json:"type"`
@@ -72,15 +82,19 @@ type ProjectStatus struct {
 }
 
 type Project struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	CategoryID  int    `json:"category_id,omitempty"`
-	StatusID    int    `json:"status_id"`
-	LocationID  int    `json:"location_id,omitempty"`
-	AuthorID    int    `json:"author_id"`
-	CreatedAt   string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
-	UpdatedAt   string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	Description    string `json:"description,omitempty"`
+	CategoryID     int    `json:"category_id,omitempty"`
+	StatusID       int    `json:"status_id"`
+	LocationID     int    `json:"location_id,omitempty"`
+	AuthorID       int    `json:"author_id"`
+	CategoryName   string `json:"category_name,omitempty"`
+	StatusName     string `json:"status_name,omitempty"`
+	LocationName   string `json:"location_name,omitempty"`
+	AuthorUsername string `json:"author_name,omitempty"`
+	CreatedAt      string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
+	UpdatedAt      string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 }
 type Setting struct {
 	ID          int    `json:"id"`
@@ -90,12 +104,83 @@ type Setting struct {
 }
 
 type SettingVal struct {
-	ID          int    `json:"id"`
-	Value       string `json:"value"`
+	ID    string `json:"id"`
+	Value string `json:"value"`
 }
 
 var db *sql.DB
 var jwtKey []byte
+var limiter = rate.NewLimiter(1, 3) // Permite 1 solicitud por segundo con un burst de 3.
+
+func RateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			http.Error(w, "Demasiadas solicitudes, intenta de nuevo más tarde.", http.StatusTooManyRequests)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+func getCurrentUser(r *http.Request) (*User, error) {
+	authToken := r.Header.Get("Authorization")
+
+	// Caso especial para "token-secreto"
+	if authToken == "token-secreto" {
+		// Asigna un usuario administrador predeterminado o realiza alguna otra acción específica
+		// Este es solo un ejemplo, ajusta según tu lógica de negocio
+		return &User{ID: 1, Username: "admin", Email: "admin@example.com"}, nil
+	}
+
+	// Para los casos que no son el "token-secreto", asumimos que es un JWT
+	// Quitamos el prefijo "Bearer " si está presente
+	tokenString := strings.TrimPrefix(authToken, "Bearer ")
+
+	// Parsea y valida el JWT para obtener el usuario
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil // `jwtKey` es tu clave secreta para validar el token
+	})
+
+	if err != nil || !token.Valid {
+		return nil, fmt.Errorf("token inválido o expirado")
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok {
+		// Usar el `userID` para buscar al usuario en tu base de datos
+		var user User
+		err := db.QueryRow("SELECT id, username, email FROM users WHERE id = ?", claims.UserID).Scan(&user.ID, &user.Username, &user.Email)
+		if err != nil {
+			return nil, err // Maneja el error de la base de datos
+		}
+		return &user, nil
+	}
+
+	return nil, fmt.Errorf("no se pudo procesar el token")
+}
+
+func insertLog(db *sql.DB, logType, oldValue, newValue string, r *http.Request) error {
+	user, err := getCurrentUser(r) // Asumo que getCurrentUser devuelve (*User, error)
+	if err != nil {
+		// Maneja el error de no poder obtener el usuario, puede que no esté autorizado o el token no sea válido
+		return err
+	}
+
+	// Asegúrate de que user no es nil para evitar panic
+	if user == nil {
+		return fmt.Errorf("usuario no encontrado o no autorizado")
+	}
+
+	// Preparar la sentencia SQL para insertar el registro
+	stmt, err := db.Prepare("INSERT INTO logs (`type`, `old_value`, `new_value`, `user_id`) VALUES (?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	// Ejecutar la sentencia con los valores proporcionados, asegurándote de pasar user.ID como el user_id
+	_, err = stmt.Exec(logType, oldValue, newValue, user.ID) // Usa user.ID aquí
+	return err
+}
 
 func initDB() {
 	var err error
@@ -138,9 +223,27 @@ func main() {
 	flag.Parse()
 	r := chi.NewRouter()
 
+	r.Use(SecurityHeaders)
 	r.Use(middleware.Logger)
 	r.Use(CORSMiddleware) // Agrega el middleware de CORS aquí
-	r.Post("/login", loginUser)
+	// Aplica el middleware de tasa de límite al directorio root
+	r.Group(func(r chi.Router) {
+		r.Use(RateLimit) // Aplica la tasa de límite a todas las rutas dentro de este grupo
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			// Tu código para manejar la raíz, como devolver un estado de API o una página principal
+			// devolver un acceso restrigido:
+			http.Error(w, "Acceso restringido", http.StatusUnauthorized)
+
+			//w.Write([]byte("Bienvenido a la API"))
+		})
+	})
+
+	// Aplica el middleware de tasa de límite solo al endpoint de login
+	r.Group(func(r chi.Router) {
+		r.Use(RateLimit) // Este middleware se aplicará solo a las rutas dentro de este grupo
+		r.Post("/login", loginUser)
+	})
+
 	r.Post("/request-recovery", requestPasswordRecovery) // POST /request-recovery - Solicitar recuperación de contraseña
 	r.Post("/change-password", changePassword)           // POST /change-password - Cambio de contraseña para un usuario
 
@@ -200,6 +303,8 @@ func main() {
 				r.Delete("/", deleteLocation)
 			})
 		})
+		r.Get("/logs", getLogs)
+
 		// Rutas para "settings"
 		r.Route("/settings", func(r chi.Router) {
 			r.Get("/", getSettings)
@@ -279,6 +384,18 @@ type Claims struct {
 	jwt.StandardClaims
 }
 
+func SecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func generateSalt() string {
 	salt := make([]byte, 16)
 	_, err := rand.Read(salt)
@@ -324,10 +441,32 @@ func createSetting(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(s.Key, s.Value, s.Description)
+	result, err := stmt.Exec(s.Key, s.Value, s.Description)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Obtener el ID del cliente recién creado.
+	lastInsertID, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// convert lastInsertID to int
+
+	s.ID = int(lastInsertID)
+	newValueBytes, err := json.Marshal(s)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo ajuste: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de creación
+	if err := insertLog(db, "create_setting", "", newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de creación de ajuste: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -343,17 +482,50 @@ func updateSetting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var old Setting
+	err := db.QueryRow("SELECT `id`, `key`, `value` FROM settings WHERE id = ?", settingID).Scan(&old.ID, &old.Key, &old.Value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Estado de proyecto no encontrada", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antigua Estado de proyecto: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	stmt, err := db.Prepare("UPDATE settings SET `value` = ? WHERE id = ?")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer stmt.Close()
-
 	_, err = stmt.Exec(s.Value, settingID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// convert settingID type string to int
+
+	s.ID = settingID
+
+	newValueBytes, err := json.Marshal(s)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nueva configuracion: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de actualización
+	if err := insertLog(db, "update_setting", oldValue, newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de actualización de configuracion: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -377,6 +549,68 @@ func deleteSetting(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+func getUserFromToken(tokenString string) (*User, error) {
+	// Parsea el token
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil // `jwtKey` es tu clave secreta para validar el token
+	})
+
+	if err != nil {
+		return nil, err // Maneja el error de parseo
+	}
+
+	// Comprueba la validez del token
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		// Aquí `Claims` es la estructura que usaste para guardar la información en el token
+		userID := claims.UserID
+
+		// Usar el `userID` para buscar al usuario en tu base de datos
+		var user User
+		err := db.QueryRow("SELECT id, username, email FROM users WHERE id = ?", userID).Scan(&user.ID, &user.Username, &user.Email)
+		if err != nil {
+			return nil, err // Maneja el error de la base de datos
+		}
+
+		return &user, nil
+	} else {
+		return nil, fmt.Errorf("token inválido o expirado")
+	}
+}
+
+func getLogs(w http.ResponseWriter, r *http.Request) {
+	var logs []Log
+
+	rows, err := db.Query("SELECT logs.id, logs.type, logs.old_value, logs.new_value, logs.user_id, logs.created_at, users.username FROM logs JOIN users ON logs.user_id = users.id ORDER BY logs.created_at DESC")
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var l Log
+		if err := rows.Scan(&l.ID, &l.Type, &l.OldValue, &l.NewValue, &l.UserID, &l.CreatedAt, &l.Username); err != nil {
+
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// set the date -3 hours for fix gmt-3 of argentina
+		createdAt, err := time.Parse("2006-01-02 15:04:05", l.CreatedAt)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		createdAt = createdAt.Add(-3 * time.Hour)
+		l.CreatedAt = createdAt.Format("2006-01-02 15:04:05")
+
+		logs = append(logs, l)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(logs)
 }
 
 // 31a1243d85cd16ed13476c944890a556-8c90f339-4737e546
@@ -416,10 +650,35 @@ func createLocation(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(l.Name, l.Lat, l.Lng, l.State, l.City, l.Country)
+	result, err := stmt.Exec(l.Name, l.Lat, l.Lng, l.State, l.City, l.Country)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Registro del evento de creación
+
+	// Obtener el ID del cliente recién creado.
+	lastInsertID, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// convert lastInsertID to int
+
+	l.ID = int(lastInsertID)
+
+	newValueBytes, err := json.Marshal(l)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nueva ubicación: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de creación
+	if err := insertLog(db, "create_location", "", newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de creación de ubicación: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -435,6 +694,24 @@ func updateLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var old Location
+	err := db.QueryRow("SELECT id, name, lat, lng, state, city, country FROM locations WHERE id = ?", locationID).Scan(&old.ID, &old.Name, &old.Lat, &old.Lng, &old.State, &old.City, &old.Country)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Ubicación no encontrada", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antigua ubicación: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	stmt, err := db.Prepare("UPDATE locations SET name = ?, lat = ?, lng = ?, state = ?, city = ?, country = ? WHERE id = ?")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -446,6 +723,19 @@ func updateLocation(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	newValueBytes, err := json.Marshal(l)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nueva ubicación: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de actualización
+	if err := insertLog(db, "update_location", oldValue, newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de actualización de ubicación: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -461,10 +751,33 @@ func deleteLocation(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
+	var old Location
+	err = db.QueryRow("SELECT id, name, lat, lng, state, city, country FROM locations WHERE id = ?", locationID).Scan(&old.ID, &old.Name, &old.Lat, &old.Lng, &old.State, &old.City, &old.Country)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Ubicación no encontrada", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antigua ubicación: %v", err)
+	}
+	oldValue := string(oldValueBytes)
 	_, err = stmt.Exec(locationID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Registro del evento de eliminación
+	if err := insertLog(db, "delete_location", oldValue, "", r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de eliminación de ubicación: %v", err)
 	}
 
 	w.WriteHeader(http.StatusNoContent) // 204 No Content como respuesta exitosa sin cuerpo
@@ -602,9 +915,6 @@ func generateAccessToken(userID int) (string, error) {
 		"exp":     expirationTime.Unix(),
 	})
 
-
-
-
 	// Firmar el token con tu clave secreta
 	tokenString, err := token.SignedString(jwtKey)
 	if err != nil {
@@ -656,7 +966,6 @@ func requestPasswordRecovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Instrucciones de recuperación enviadas."})
 }
@@ -704,6 +1013,24 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var old User
+	err := db.QueryRow("SELECT `id`, `username`, `rank`, `email`, `name`, `password_hash` FROM users WHERE id = ?", userID).Scan(&old.ID, &old.Username, &old.Rank, &old.Email, &old.Name, &old.PasswordHash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Usuario no encontrado", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antiguo usuario: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	// Verificar si el nombre de usuario ya existe para otro ID
 	// if usernameExistsForOtherID(u.Username, userID) {
 	//     http.Error(w, "El nombre de usuario ya existe para otro usuario", http.StatusBadRequest)
@@ -742,6 +1069,18 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	newValueBytes, err := json.Marshal(u)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo usuario: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de actualización
+	if err := insertLog(db, "update_user", oldValue, newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de actualización de usuario: %v", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fmt.Sprintf("Usuario con ID %s actualizado correctamente", userID))
 }
@@ -788,10 +1127,32 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(u.Username, u.Rank, u.Email, u.Name, hashedPassword, salt)
+	result, err := stmt.Exec(u.Username, u.Rank, u.Email, u.Name, hashedPassword, salt)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// Obtener el ID del cliente recién creado.
+	lastInsertID, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// convert lastInsertID to int
+
+	u.ID = int(lastInsertID)
+
+	newValueBytes, err := json.Marshal(u)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo usuario: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de creación
+	if err := insertLog(db, "create_user", "", newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de creación de usuario: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -900,8 +1261,6 @@ func sendRecoveryEmail(email, token string) error {
 	message := mg.NewMessage(sender, subject, "", recipient) // El cuerpo vacío se reemplaza por el parámetro de HTML a continuación
 	message.SetHtml(body)
 
-
-
 	// Enviar el correo electrónico
 	_, _, err = mg.Send(message)
 	return err
@@ -947,12 +1306,35 @@ func deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
+	var old User
+	err = db.QueryRow("SELECT `id`, `username`, `rank`, `email`, `name`, `password_hash` FROM users WHERE id = ?", userID).Scan(&old.ID, &old.Username, &old.Rank, &old.Email, &old.Name, &old.PasswordHash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Usuario no encontrado", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antiguo usuario: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	_, err = stmt.Exec(userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Registro del evento de eliminación
+	if err := insertLog(db, "delete_user", oldValue, "", r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de eliminación de usuario: %v", err)
+	}
 	w.WriteHeader(http.StatusNoContent) // 204 No Content como respuesta exitosa sin cuerpo
 }
 
@@ -991,10 +1373,33 @@ func createCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(c.Type, c.Name, c.Fields)
+	result, err := stmt.Exec(c.Type, c.Name, c.Fields)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Obtener el ID del cliente recién creado.
+	lastInsertID, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// convert lastInsertID to int
+
+	c.ID = int(lastInsertID)
+
+	newValueBytes, err := json.Marshal(c)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nueva categoria: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de creación
+	if err := insertLog(db, "create_category", "", newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de creación de categoria: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1010,6 +1415,24 @@ func updateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var old Category
+	err := db.QueryRow("SELECT id, type, name, fields FROM categories WHERE id = ?", categoryID).Scan(&old.ID, &old.Type, &old.Name, &old.Fields)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Categoria no encontrada", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antigua categoria: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	stmt, err := db.Prepare("UPDATE categories SET type = ?, name = ?, fields = ? WHERE id = ?")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1023,6 +1446,18 @@ func updateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	newValueBytes, err := json.Marshal(c)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nueva categoria: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de actualización
+	if err := insertLog(db, "update_category", oldValue, newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de actualización de categoria: %v", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fmt.Sprintf("Categoría con ID %s actualizada correctamente", categoryID))
 }
@@ -1037,10 +1472,34 @@ func deleteCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
+	var old Category
+	err = db.QueryRow("SELECT id, type, name, fields FROM categories WHERE id = ?", categoryID).Scan(&old.ID, &old.Type, &old.Name, &old.Fields)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Categoria no encontrada", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antigua categoria: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	_, err = stmt.Exec(categoryID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Registro del evento de eliminación
+	if err := insertLog(db, "delete_category", oldValue, "", r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de eliminación de categoría: %v", err)
 	}
 
 	w.WriteHeader(http.StatusNoContent) // 204 No Content como respuesta exitosa sin cuerpo
@@ -1118,6 +1577,19 @@ func createClient(w http.ResponseWriter, r *http.Request) {
 
 	c.ID = int(lastInsertID)
 
+	newValueBytes, err := json.Marshal(c)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo cliente: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de creación
+	if err := insertLog(db, "create_client", "", newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de creación de cliente: %v", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(c)
@@ -1150,6 +1622,24 @@ func updateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var old Client
+	err := db.QueryRow("SELECT id, name, address, phone, email, web, city, category_id, company FROM clients WHERE id = ?", clientID).Scan(&old.ID, &old.Name, &old.Address, &old.Phone, &old.Email, &old.Web, &old.City, &old.CategoryID, &old.Company)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Cliente no encontrado", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antiguo cliente: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	stmt, err := db.Prepare("UPDATE clients SET name = ?, address = ?, phone = ?, email = ?, web = ?, city = ?, category_id = ?, company = ? WHERE id = ?")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1163,6 +1653,18 @@ func updateClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	newValueBytes, err := json.Marshal(c)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo cliente: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de actualización
+	if err := insertLog(db, "update_client", oldValue, newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de actualización de cliente: %v", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(fmt.Sprintf("Cliente con ID %s actualizado correctamente", clientID))
@@ -1178,12 +1680,35 @@ func deleteClient(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
+	var old Client
+	err = db.QueryRow("SELECT id, name, address, phone, email, web, city, category_id, company FROM clients WHERE id = ?", clientID).Scan(&old.ID, &old.Name, &old.Address, &old.Phone, &old.Email, &old.Web, &old.City, &old.CategoryID, &old.Company)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Cliente no encontrado", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antiguo cliente: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	_, err = stmt.Exec(clientID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Registro del evento de eliminación
+	if err := insertLog(db, "delete_client", oldValue, "", r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de eliminación de cliente: %v", err)
+	}
 	w.WriteHeader(http.StatusNoContent) // 204 No Content se suele utilizar para respuestas exitosas sin cuerpo
 }
 
@@ -1237,6 +1762,19 @@ func createProjectStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	s.ID = int(lastInsertID)
 
+	newValueBytes, err := json.Marshal(s)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo estado de proyecto: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de creación
+	if err := insertLog(db, "create_project_status", "", newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de creación de estado de proyecto: %v", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(s)
@@ -1268,6 +1806,24 @@ func updateProjectStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var old ProjectStatus
+	err := db.QueryRow("SELECT id, status_name, `order` FROM project_statuses WHERE id = ?", statusID).Scan(&old.ID, &old.StatusName, &old.Order)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Estado de proyecto no encontrada", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antigua Estado de proyecto: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	stmt, err := db.Prepare("UPDATE project_statuses SET status_name = ?, `order` = ? WHERE id = ?")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1281,6 +1837,18 @@ func updateProjectStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	newValueBytes, err := json.Marshal(s)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo estado de proyecto: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de actualización
+	if err := insertLog(db, "update_location", oldValue, newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de actualización de estado de proyecto: %v", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fmt.Sprintf("Estado de proyecto con ID %s actualizado correctamente", statusID))
 }
@@ -1295,10 +1863,34 @@ func deleteProjectStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
+	var old ProjectStatus
+	err = db.QueryRow("SELECT id, status_name, `order` FROM project_statuses WHERE id = ?", statusID).Scan(&old.ID, &old.StatusName, &old.Order)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Estado de proyecto no encontrada", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antigua Estado de proyecto: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	_, err = stmt.Exec(statusID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Registro del evento de eliminación
+	if err := insertLog(db, "delete_project_status", oldValue, "", r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de eliminación de estado proyecto: %v", err)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -1333,7 +1925,14 @@ func createProject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	currentUser, err := getCurrentUser(r)
 
+	if err != nil {
+		http.Error(w, "Error al obtener el usuario actual", http.StatusInternalServerError)
+		return
+	}
+
+	p.AuthorID = currentUser.ID
 	stmt, err := db.Prepare("INSERT INTO projects (name, description, category_id, status_id, location_id, author_id) VALUES (?, ?, ?, ?, ?, ?)")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1354,6 +1953,19 @@ func createProject(w http.ResponseWriter, r *http.Request) {
 	}
 	p.ID = int(lastInsertID)
 
+	newValueBytes, err := json.Marshal(p)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo proyecto: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de creación
+	if err := insertLog(db, "create_project", "", newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de creación de proyecto: %v", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(p)
@@ -1363,7 +1975,12 @@ func getProjectByID(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "id")
 
 	var p Project
-	err := db.QueryRow("SELECT id, name, description, category_id, status_id, location_id, author_id, created_at, updated_at FROM projects WHERE id = ?", projectID).Scan(&p.ID, &p.Name, &p.Description, &p.CategoryID, &p.StatusID, &p.LocationID, &p.AuthorID, &p.CreatedAt, &p.UpdatedAt)
+
+	// Change the query for the project to include the status, author, location and category names
+
+	// also return the category, status, location, author NAME and ID, both of them
+	err := db.QueryRow("SELECT p.id, p.name, p.description, c.id, c.name, ps.id, ps.status_name, l.id, l.name, u.id, u.name, p.created_at, p.updated_at FROM projects p JOIN categories c ON p.category_id = c.id JOIN project_statuses ps ON p.status_id = ps.id JOIN locations l ON p.location_id = l.id JOIN users u ON p.author_id = u.id WHERE p.id = ?", projectID).Scan(&p.ID, &p.Name, &p.Description, &p.CategoryID, &p.CategoryName, &p.StatusID, &p.StatusName, &p.LocationID, &p.LocationName, &p.AuthorID, &p.AuthorUsername, &p.CreatedAt, &p.UpdatedAt)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Proyecto no encontrado", http.StatusNotFound)
@@ -1385,6 +2002,24 @@ func updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var old Project
+	err := db.QueryRow("SELECT id, name, description, category_id, status_id, location_id, author_id, created_at, updated_at FROM projects WHERE id = ?", projectID).Scan(&old.ID, &old.Name, &old.Description, &old.CategoryID, &old.StatusID, &old.LocationID, &old.AuthorID, &old.CreatedAt, &old.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Proyecto no encontrado", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antiguo Proyecto: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	stmt, err := db.Prepare("UPDATE projects SET name = ?, description = ?, category_id = ?, status_id = ?, location_id = ?, author_id = ? WHERE id = ?")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1398,6 +2033,18 @@ func updateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	newValueBytes, err := json.Marshal(p)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar nuevo proyecto: %v", err)
+	}
+	newValue := string(newValueBytes)
+
+	// Registro del evento de actualización
+	if err := insertLog(db, "update_project", oldValue, newValue, r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de actualización de proyecto: %v", err)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(fmt.Sprintf("Proyecto con ID %s actualizado correctamente", projectID))
 }
@@ -1412,10 +2059,34 @@ func deleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 	defer stmt.Close()
 
+	var old Project
+	err = db.QueryRow("SELECT id, name, description, category_id, status_id, location_id, author_id, created_at, updated_at FROM projects WHERE id = ?", projectID).Scan(&old.ID, &old.Name, &old.Description, &old.CategoryID, &old.StatusID, &old.LocationID, &old.AuthorID, &old.CreatedAt, &old.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Proyecto no encontrado", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	oldValueBytes, err := json.Marshal(old)
+	if err != nil {
+		// Manejar error de serialización
+		log.Printf("Error al serializar antiguo Proyecto: %v", err)
+	}
+	oldValue := string(oldValueBytes)
+
 	_, err = stmt.Exec(projectID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Registro del evento de eliminación
+	if err := insertLog(db, "delete_project", oldValue, "", r); err != nil {
+		// Manejar el error de inserción del log aquí
+		log.Printf("Error al insertar el registro de eliminación de proyecto: %v", err)
 	}
 
 	w.WriteHeader(http.StatusNoContent) // 204 No Content como respuesta exitosa sin cuerpo
