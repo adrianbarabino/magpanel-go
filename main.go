@@ -136,6 +136,8 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(CORSMiddleware) // Agrega el middleware de CORS aquí
 	r.Post("/login", loginUser)
+	r.Post("/request-recovery", requestPasswordRecovery) // POST /request-recovery - Solicitar recuperación de contraseña
+	r.Post("/change-password", changePassword)           // POST /change-password - Cambio de contraseña para un usuario
 
 	r.Group(func(r chi.Router) {
 		r.Use(AuthMiddleware)
@@ -149,8 +151,6 @@ func main() {
 			r.Delete("/{id}", deleteUser) // DELETE /users/{id} - Eliminar un usuario
 
 			// Rutas adicionales para operaciones específicas de usuarios
-			r.Post("/change-password", changePassword)           // POST /users/change-password - Cambio de contraseña para un usuario
-			r.Post("/request-recovery", requestPasswordRecovery) // POST /users/request-recovery - Solicitar recuperación de contraseña
 		})
 		// Rutas para "clients"
 		r.Route("/clients", func(r chi.Router) {
@@ -562,6 +562,32 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"access_token": accessToken})
 }
 
+func checkAccessToken(accessToken string) (int, error) {
+	// Parsear el token
+	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	// Verificar si el token es válido
+	if !token.Valid {
+		return 0, fmt.Errorf("Token inválido")
+	}
+
+	// Obtener las reclamaciones (claims) del token
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return 0, fmt.Errorf("Error al obtener las reclamaciones del token")
+	}
+
+	// Obtener el ID de usuario desde las reclamaciones
+	userID := int(claims["user_id"].(float64))
+
+	return userID, nil
+}
+
 func generateAccessToken(userID int) (string, error) {
 	expirationTime := time.Now().Add(24 * time.Hour) // El token expira en 24 horas
 
@@ -570,6 +596,9 @@ func generateAccessToken(userID int) (string, error) {
 		"user_id": userID, // Puedes añadir más datos del usuario según sea necesario
 		"exp":     expirationTime.Unix(),
 	})
+
+
+
 
 	// Firmar el token con tu clave secreta
 	tokenString, err := token.SignedString(jwtKey)
@@ -600,17 +629,28 @@ func requestPasswordRecovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generar recovery token (este es un ejemplo simplificado, considera usar algo más seguro)
+	// Generar recovery token y almacenar en la base de datos con la fecha y hora actual
 	recoveryToken := fmt.Sprintf("%x", md5.Sum([]byte(time.Now().String()+u.Email)))
 
-	// Almacenar recovery token en la base de datos (asumiendo que has añadido un campo para ello)
-	_, err = db.Exec("UPDATE users SET recovery_hash = ? WHERE id = ?", recoveryToken, u.ID)
+	// Asumiendo que ahora tienes una columna recovery_hash_time
+	_, err = db.Exec("UPDATE users SET recovery_hash = ?, recovery_hash_time = NOW() WHERE id = ?", recoveryToken, u.ID)
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Enviar recovery token por correo electrónico al usuario (implementa esta parte según tu lógica de envío de correos)
+
+	// send recovery with mailgun
+
+	err = sendRecoveryEmail(u.Email, recoveryToken)
+	if err != nil {
+		fmt.Println("Error al enviar el correo electrónico de recuperación:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Instrucciones de recuperación enviadas."})
@@ -673,6 +713,9 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		// Generar nueva sal y hashear la nueva contraseña
 		newSalt := generateSalt()
 		newHashedPassword := hashPassword(u.PasswordHash, newSalt)
+		fmt.Println("Nueva contraseña:", u.PasswordHash)
+		fmt.Println("Nueva contraseña hasheada:", newHashedPassword)
+		fmt.Println("Nueva sal:", newSalt)
 
 		query = "UPDATE users SET `username` = ?, `rank` = ?, `email` = ?, `name` = ?, `password_hash` = ?, `salt` = ? WHERE `id` = ?"
 		args = append(args, u.Username, u.Rank, u.Email, u.Name, newHashedPassword, newSalt, userID)
@@ -754,7 +797,6 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 
 func changePassword(w http.ResponseWriter, r *http.Request) {
 	var requestData struct {
-		Email       string `json:"email"`
 		Token       string `json:"token"`
 		NewPassword string `json:"newPassword"`
 	}
@@ -764,10 +806,26 @@ func changePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var userID int
-	err := db.QueryRow("SELECT id FROM users WHERE email = ? AND recovery_hash = ?", requestData.Email, requestData.Token).Scan(&userID)
-	if err != nil {
-		http.Error(w, "Error al generar el token de acceso", http.StatusInternalServerError)
+	var recoveryHashTimeBytes []byte
 
+	// Recuperar la fecha y hora del token además del ID del usuario
+	err := db.QueryRow("SELECT id, recovery_hash_time FROM users WHERE recovery_hash = ?", requestData.Token).Scan(&userID, &recoveryHashTimeBytes)
+	if err != nil {
+		fmt.Println("Error al obtener el token de recuperación:", err)
+		http.Error(w, "Error al obtener el token de recuperación", http.StatusInternalServerError)
+		return
+	}
+	// Convertir recoveryHashTimeBytes a una cadena y luego parsearla como una fecha y hora
+	recoveryHashTimeString := string(recoveryHashTimeBytes)
+	recoveryHashTime, err := time.Parse("2006-01-02 15:04:05", recoveryHashTimeString) // Ajusta el formato según sea necesario
+	if err != nil {
+		fmt.Printf("Error al parsear 'recoveryHashTime': %v\n", err)
+		http.Error(w, "Error al parsear 'recoveryHashTime'", http.StatusInternalServerError)
+		return
+	}
+	// Verificar si han pasado 24 horas desde que se generó el token
+	if time.Since(recoveryHashTime).Hours() > 24 {
+		http.Error(w, "El token de recuperación ha expirado", http.StatusBadRequest)
 		return
 	}
 
@@ -813,13 +871,31 @@ func sendRecoveryEmail(email, token string) error {
 	// Configuración de Mailgun
 	mg := mailgun.NewMailgun(domain, apiKey)
 
-	// Construir el mensaje de correo electrónico
+	// Construir el mensaje de correo electrónico en formato HTML
 	sender := "no-reply@mag-servicios.com" // Considera también almacenar esto en la tabla de configuraciones
 	subject := "Recuperación de contraseña"
-	body := fmt.Sprintf("Tu token de recuperación es: %s introdúcelo en la página web para poder recuperar tu contraseña: https://gestion.mag-servicios.com/password-recovery/%s/ ", token, token)
+	logoURL := "https://mag-servicios.com/wp-content/uploads/2022/12/01-4.png"
+	body := fmt.Sprintf(`
+	<html>
+	<body>
+		<div style="text-align: center;">
+			<img src="%s" alt="Logo MAG Servicios" style="max-width: 200px; margin-bottom: 20px;">
+			<p>Tu token de recuperación es: <strong>%s</strong></p>
+			<p>Introdúcelo en la página web para poder recuperar tu contraseña:</p>
+			<a href="https://gestion.mag-servicios.com/password-recovery/%s/" style="display: inline-block; background-color: #007BFF; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Recuperar Contraseña</a>
+		</div>
+	</body>
+	</html>
+	`, logoURL, token, token)
+
 	recipient := email
 
-	message := mg.NewMessage(sender, subject, body, recipient)
+	// Asegúrate de utilizar la función adecuada para enviar mensajes en formato HTML.
+	// Si estás utilizando Mailgun, `NewMessage` debería ser reemplazado por `NewMessage` con el parámetro adecuado para indicar que el contenido es HTML
+	message := mg.NewMessage(sender, subject, "", recipient) // El cuerpo vacío se reemplaza por el parámetro de HTML a continuación
+	message.SetHtml(body)
+
+
 
 	// Enviar el correo electrónico
 	_, _, err = mg.Send(message)
