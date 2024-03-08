@@ -89,6 +89,11 @@ type Setting struct {
 	Description string `json:"description,omitempty"`
 }
 
+type SettingVal struct {
+	ID          int    `json:"id"`
+	Value       string `json:"value"`
+}
+
 var db *sql.DB
 var jwtKey []byte
 
@@ -332,20 +337,20 @@ func createSetting(w http.ResponseWriter, r *http.Request) {
 
 func updateSetting(w http.ResponseWriter, r *http.Request) {
 	settingID := chi.URLParam(r, "id")
-	var s Setting
+	var s SettingVal
 	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	stmt, err := db.Prepare("UPDATE settings SET `key` = ?, `value` = ?, description = ? WHERE id = ?")
+	stmt, err := db.Prepare("UPDATE settings SET `value` = ? WHERE id = ?")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(s.Key, s.Value, s.Description, settingID)
+	_, err = stmt.Exec(s.Value, settingID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
