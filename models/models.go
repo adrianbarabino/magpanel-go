@@ -57,6 +57,33 @@ type ClientContact struct {
 	ContactID int `json:"contact_id"`
 }
 
+type Provider struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	Code       string `json:"code,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
+	Address    string `json:"address"`
+	Phone      string `json:"phone,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
+	Email      string `json:"email"`
+	Web        string `json:"web,omitempty"`
+	City       string `json:"city"`
+	CategoryID int    `json:"category_id,omitempty"`
+	Company    string `json:"company,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
+	UpdatedAt  string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
+}
+
+// ContactWithProviders es una estructura extendida de Contact para incluir los ProviderIDs asociados
+type ContactWithProviders struct {
+	Contact           // Incorporación anónima de la estructura Contact
+	ProviderIDs []int `json:"provider_ids"` // Slice de IDs de provideres
+}
+
+// ProviderContact representa la relación muchos a muchos entre Contactos y Provideres
+type ProviderContact struct {
+	ProviderID int `json:"provider_id"`
+	ContactID  int `json:"contact_id"`
+}
+
 type Log struct {
 	ID        int    `json:"id"`
 	Type      string `json:"type"`

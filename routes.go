@@ -89,6 +89,16 @@ func initRoutes() *chi.Mux {
 			})
 		})
 
+		r.Route("/providers", func(r chi.Router) {
+			r.Get("/", getProviders)
+			r.Post("/", createProvider)
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", getProviderByID)
+				r.Put("/", updateProvider)
+				r.Delete("/", deleteProvider)
+			})
+		})
+
 		// Rutas para "project-statuses"
 		r.Route("/project-statuses", func(r chi.Router) {
 			r.Get("/", getProjectStatuses)
