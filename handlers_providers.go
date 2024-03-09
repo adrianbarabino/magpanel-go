@@ -80,7 +80,7 @@ func getProviderByID(w http.ResponseWriter, r *http.Request) {
 	rows, err := dataBase.SelectRow("SELECT id, code, name, address, phone, email, web, city, category_id, company FROM providers WHERE id = ?", providerID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "Providere no encontrado", http.StatusNotFound)
+			http.Error(w, "Proveedor no encontrado", http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -106,7 +106,7 @@ func updateProvider(w http.ResponseWriter, r *http.Request) {
 	rows, err := dataBase.SelectRow("SELECT id, name, address, phone, email, web, city, category_id, company FROM providers WHERE id = ?", providerID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "Providere no encontrado", http.StatusNotFound)
+			http.Error(w, "Proveedor no encontrado", http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
@@ -142,7 +142,7 @@ func updateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(fmt.Sprintf("Providere con ID %s actualizado correctamente", providerID))
+	json.NewEncoder(w).Encode(fmt.Sprintf("Proveedor con ID %s actualizado correctamente", providerID))
 }
 
 func deleteProvider(w http.ResponseWriter, r *http.Request) {
@@ -159,7 +159,7 @@ func deleteProvider(w http.ResponseWriter, r *http.Request) {
 	rows, err := dataBase.SelectRow("SELECT id, code, name, address, phone, email, web, city, category_id, company FROM providers WHERE id = ?", providerID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "Providere no encontrado", http.StatusNotFound)
+			http.Error(w, "Proveedor no encontrado", http.StatusNotFound)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
