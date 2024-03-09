@@ -6,12 +6,14 @@ import (
 	"log"
 	"magpanel/database"
 	"net/http"
+	"time"
 
 	"gopkg.in/ini.v1"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
+var uptime time.Time
 var dataBase *database.DatabaseStruct
 var jwtKey []byte
 
@@ -23,6 +25,7 @@ func main() {
 	flag.Parse()
 
 	r := initRoutes()
+	uptime = time.Now()
 
 	// Inicia el servidor en el puerto especificado
 	log.Printf("Servidor corriendo en el puerto %s\n", port)

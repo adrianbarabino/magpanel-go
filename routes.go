@@ -25,6 +25,8 @@ func initRoutes() *chi.Mux {
 		})
 	})
 
+	r.Get("/version", getVersion) // GET /version - Devuelve la versión de la API
+
 	// Aplica el middleware de tasa de límite solo al endpoint de login
 	r.Group(func(r chi.Router) {
 		r.Use(RateLimit) // Este middleware se aplicará solo a las rutas dentro de este grupo

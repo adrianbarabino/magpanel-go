@@ -1,5 +1,10 @@
 package main
 
+import (
+	"net/http"
+	"time"
+)
+
 func getMailgunConfig() (string, string, error) {
 	var domain, apiKey string
 
@@ -18,4 +23,10 @@ func getMailgunConfig() (string, string, error) {
 	rows.Scan(&apiKey)
 
 	return domain, apiKey, nil
+}
+
+func getVersion(w http.ResponseWriter, r *http.Request) {
+	since := time.Since(uptime)
+	returnString := "API v1.1.7 - Uptime: " + since.String()
+	w.Write([]byte(returnString))
 }
