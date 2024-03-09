@@ -15,7 +15,7 @@ import (
 func getUsers(w http.ResponseWriter, r *http.Request) {
 	var users []models.User
 
-	rows, err := dataBase.Select("SELECT id, username, rank, email, name, recovery_hash, created_at, updated_at FROM users")
+	rows, err := dataBase.Select("SELECT `id`, `username`, `rank`, `email`, `name`, `recovery_hash`, `created_at`, `updated_at` FROM users")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -57,8 +57,7 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var old models.User
-
-	rows, err := dataBase.SelectRow("SELECT id, username, rank, email, name, password_hash FROM users WHERE id = ?", userID)
+	rows, err := dataBase.SelectRow("SELECT `id`, `username`, `rank`, `email`, `name`, `password_hash` FROM users WHERE id = ?", userID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Usuario no encontrado", http.StatusNotFound)

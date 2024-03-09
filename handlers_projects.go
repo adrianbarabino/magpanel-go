@@ -14,7 +14,9 @@ import (
 func getProjects(w http.ResponseWriter, r *http.Request) {
 	var projects []models.Project
 
-	rows, err := dataBase.Select("SELECT id, name, description, category_id, status_id, location_id, author_id, created_at, updated_at FROM projects")
+	// get also the categoryName, statusName, locationName and authorName with a JOIN
+	rows, err := dataBase.Select("SELECT p.id, p.name, p.description, p.category_id, p.status_id, p.location_id, p.author_id, p.created_at, p.updated_at, c.name, ps.status_name, l.name, u.name FROM projects p JOIN categories c ON p.category_id = c.id JOIN project_statuses ps ON p.status_id = ps.id JOIN locations l ON p.location_id = l.id JOIN users u ON p.author_id = u.id")
+
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -23,7 +25,7 @@ func getProjects(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var p models.Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.CategoryID, &p.StatusID, &p.LocationID, &p.AuthorID, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.CategoryID, &p.StatusID, &p.LocationID, &p.AuthorID, &p.CreatedAt, &p.UpdatedAt, &p.CategoryName, &p.StatusName, &p.LocationName, &p.AuthorName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
