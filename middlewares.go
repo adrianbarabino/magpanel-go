@@ -60,7 +60,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 }
 
 func SecurityHeaders(next http.Handler) http.Handler {
-	totalRequests++
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'")
 		w.Header().Set("X-Frame-Options", "DENY")

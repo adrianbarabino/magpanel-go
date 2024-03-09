@@ -10,6 +10,14 @@ import (
 func initRoutes() *chi.Mux {
 	r := chi.NewRouter()
 
+	// add totalRequests counter
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			totalRequests++
+			next.ServeHTTP(w, r)
+		})
+	})
+
 	r.Use(SecurityHeaders)
 	r.Use(middleware.Logger)
 	r.Use(CORSMiddleware) // Agrega el middleware de CORS aquí

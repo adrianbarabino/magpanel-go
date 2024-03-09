@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -27,6 +28,6 @@ func getMailgunConfig() (string, string, error) {
 
 func getVersion(w http.ResponseWriter, r *http.Request) {
 	since := time.Since(uptime)
-	returnString := "API v1.1.7 - Uptime: " + since.String() + " - Total requests: " + string(totalRequests)
+	returnString := "API v1.1.7 - Uptime: " + since.String() + " - Total requests: " + fmt.Sprintf("%d", totalRequests)
 	w.Write([]byte(returnString))
 }
