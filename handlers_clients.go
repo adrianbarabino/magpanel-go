@@ -13,7 +13,7 @@ import (
 
 func getClients(w http.ResponseWriter, r *http.Request) {
 
-	rows, err := dataBase.Select("SELECT id, name, address, phone, email, web, city, category_id, company FROM clients")
+	rows, err := dataBase.Select("SELECT id, code, name, address, phone, email, web, city, category_id, company FROM clients")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -23,7 +23,7 @@ func getClients(w http.ResponseWriter, r *http.Request) {
 	var clients []models.Client
 	for rows.Next() {
 		var c models.Client
-		err := rows.Scan(&c.ID, &c.Name, &c.Address, &c.Phone, &c.Email, &c.Web, &c.City, &c.CategoryID, &c.Company)
+		err := rows.Scan(&c.ID, &c.Code, &c.Name, &c.Address, &c.Phone, &c.Email, &c.Web, &c.City, &c.CategoryID, &c.Company)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -44,7 +44,7 @@ func createClient(w http.ResponseWriter, r *http.Request) {
 
 	// Preparar la consulta SQL.
 
-	lastInsertID, err := dataBase.Insert(true, "INSERT INTO clients(name, address, phone, email, web, city, category_id, company) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", c.Name, c.Address, c.Phone, c.Email, c.Web, c.City, c.CategoryID, c.Company)
+	lastInsertID, err := dataBase.Insert(true, "INSERT INTO clients(name, code, address, phone, email, web, city, category_id, company) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", c.Name, c.Code, c.Address, c.Phone, c.Email, c.Web, c.City, c.CategoryID, c.Company)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -77,7 +77,7 @@ func getClientByID(w http.ResponseWriter, r *http.Request) {
 
 	var c models.Client
 
-	rows, err := dataBase.SelectRow("SELECT id, name, address, phone, email, web, city, category_id, company FROM clients WHERE id = ?", clientID)
+	rows, err := dataBase.SelectRow("SELECT id, code, name, address, phone, email, web, city, category_id, company FROM clients WHERE id = ?", clientID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Cliente no encontrado", http.StatusNotFound)
@@ -86,7 +86,7 @@ func getClientByID(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	rows.Scan(&c.ID, &c.Name, &c.Address, &c.Phone, &c.Email, &c.Web, &c.City, &c.CategoryID, &c.Company)
+	rows.Scan(&c.ID, &c.Code, &c.Name, &c.Address, &c.Phone, &c.Email, &c.Web, &c.City, &c.CategoryID, &c.Company)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(c)
@@ -102,6 +102,7 @@ func updateClient(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var old models.Client
+	// No es necesario verificar el código del cliente, ya que no se puede modificar
 	rows, err := dataBase.SelectRow("SELECT id, name, address, phone, email, web, city, category_id, company FROM clients WHERE id = ?", clientID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -120,6 +121,7 @@ func updateClient(w http.ResponseWriter, r *http.Request) {
 	}
 	oldValue := string(oldValueBytes)
 
+	// No es necesario verificar el código del cliente, ya que no se puede modificar
 	_, err = dataBase.Update(true, "UPDATE clients SET name = ?, address = ?, phone = ?, email = ?, web = ?, city = ?, category_id = ?, company = ? WHERE id = ?", c.Name, c.Address, c.Phone, c.Email, c.Web, c.City, c.CategoryID, c.Company, clientID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -154,7 +156,7 @@ func deleteClient(w http.ResponseWriter, r *http.Request) {
 
 	var old models.Client
 
-	rows, err := dataBase.SelectRow("SELECT id, name, address, phone, email, web, city, category_id, company FROM clients WHERE id = ?", clientID)
+	rows, err := dataBase.SelectRow("SELECT id, code, name, address, phone, email, web, city, category_id, company FROM clients WHERE id = ?", clientID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Cliente no encontrado", http.StatusNotFound)
@@ -163,7 +165,7 @@ func deleteClient(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	rows.Scan(&old.ID, &old.Name, &old.Address, &old.Phone, &old.Email, &old.Web, &old.City, &old.CategoryID, &old.Company)
+	rows.Scan(&old.ID, &old.Code, &old.Name, &old.Address, &old.Phone, &old.Email, &old.Web, &old.City, &old.CategoryID, &old.Company)
 
 	oldValueBytes, err := json.Marshal(old)
 	if err != nil {

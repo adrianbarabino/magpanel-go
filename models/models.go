@@ -22,6 +22,7 @@ type User struct {
 type Client struct {
 	ID         int    `json:"id"`
 	Name       string `json:"name"`
+	Code       string `json:"code,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
 	Address    string `json:"address"`
 	Phone      string `json:"phone,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
 	Email      string `json:"email"`
@@ -32,6 +33,7 @@ type Client struct {
 	CreatedAt  string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 	UpdatedAt  string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 }
+
 type Log struct {
 	ID        int    `json:"id"`
 	Type      string `json:"type"`
@@ -44,6 +46,7 @@ type Log struct {
 type Category struct {
 	ID     int            `json:"id"`
 	Type   string         `json:"type"`
+	Code   string         `json:"code,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
 	Name   string         `json:"name"`
 	Fields sql.NullString `json:"fields,omitempty"` // Cambiado a sql.NullString para manejar valores NULL
 }
@@ -57,19 +60,24 @@ type Location struct {
 	Country string  `json:"country"`
 }
 type ProjectStatus struct {
-	ID         int    `json:"id"`
-	StatusName string `json:"status_name"`
-	Order      int    `json:"order"`
+	ID           int    `json:"id"`
+	StatusName   string `json:"status_name"`
+	CategoryID   int    `json:"category_id,omitempty"`
+	CategoryName string `json:"category_name,omitempty"`
+	Order        int    `json:"order"`
 }
 
 type Project struct {
 	ID           int    `json:"id"`
 	Name         string `json:"name"`
+	Code         string `json:"code,omitempty"`
 	Description  string `json:"description,omitempty"`
 	CategoryID   int    `json:"category_id,omitempty"`
 	StatusID     int    `json:"status_id"`
 	LocationID   int    `json:"location_id,omitempty"`
 	AuthorID     int    `json:"author_id"`
+	ClientID     int    `json:"client_id"`
+	ClientName   string `json:"client_name,omitempty"`
 	CategoryName string `json:"category_name,omitempty"`
 	StatusName   string `json:"status_name,omitempty"`
 	LocationName string `json:"location_name,omitempty"`

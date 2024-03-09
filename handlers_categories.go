@@ -40,11 +40,36 @@ func createCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// if is Type project and have c.Code, check if there any category with the same code
+	if c.Type == "projects" && c.Code != "" {
+		// check if there any category with the same code
+		var existing models.Category
+		row, err := dataBase.SelectRow("SELECT id FROM categories WHERE code = ?", c.Code)
+		if err != nil && err != sql.ErrNoRows {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		err = row.Scan(&existing.ID)
+		if err != sql.ErrNoRows {
+			http.Error(w, "Ya existe una categoría con el mismo código", http.StatusConflict)
+			return
+		}
+	}
+
 	lastInsertID, err := dataBase.Insert(true, "INSERT INTO categories (type, name, fields) VALUES (?, ?, ?)", c.Type, c.Name, c.Fields)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if c.Type == "projects" && c.Code != "" {
+		// update the code
+		_, err = dataBase.Update(true, "UPDATE categories SET code = ? WHERE id = ?", c.Code, lastInsertID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// convert lastInsertID to int
@@ -161,7 +186,7 @@ func getCategoryByID(w http.ResponseWriter, r *http.Request) {
 	categoryID := chi.URLParam(r, "id") // Obtiene el ID de la categoría de la URL
 
 	var c models.Category
-	rows, err := dataBase.SelectRow("SELECT id, type, name, fields FROM categories WHERE id = ?", categoryID)
+	rows, err := dataBase.SelectRow("SELECT id, code, type, name, fields FROM categories WHERE id = ?", categoryID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Categoría no encontrada", http.StatusNotFound)
@@ -170,7 +195,7 @@ func getCategoryByID(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	rows.Scan(&c.ID, &c.Type, &c.Name, &c.Fields)
+	rows.Scan(&c.ID, &c.Code, &c.Type, &c.Name, &c.Fields)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(c)

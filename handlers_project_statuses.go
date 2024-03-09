@@ -14,7 +14,8 @@ import (
 func getProjectStatuses(w http.ResponseWriter, r *http.Request) {
 	var statuses []models.ProjectStatus
 
-	rows, err := dataBase.Select("SELECT id, status_name, `order` FROM project_statuses")
+	// get the p.category_id and Name from the categories table with JOIN
+	rows, err := dataBase.Select("SELECT p.id, p.status_name, p.order, p.category_id, c.name FROM project_statuses p JOIN categories c ON p.category_id = c.id")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -23,7 +24,7 @@ func getProjectStatuses(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var s models.ProjectStatus
-		if err := rows.Scan(&s.ID, &s.StatusName, &s.Order); err != nil {
+		if err := rows.Scan(&s.ID, &s.StatusName, &s.Order, &s.CategoryID, &s.CategoryName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -40,7 +41,23 @@ func createProjectStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	lastInsertID, err := dataBase.Insert(true, "INSERT INTO project_statuses (status_name, `order`) VALUES (?, ?)", s.StatusName, s.Order)
+
+	// Verificar si existe un registro con el mismo order y category_id, si existe y no es el mismo registro que se está actualizando, devolver un error
+	var existing models.ProjectStatus
+	row, err := dataBase.SelectRow("SELECT id FROM project_statuses WHERE `order` = ? AND category_id = ?", s.Order, s.CategoryID)
+	if err != nil && err != sql.ErrNoRows {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = row.Scan(&existing.ID)
+	if err != sql.ErrNoRows {
+		if existing.ID != s.ID {
+			http.Error(w, "Ya existe un estado de proyecto con el mismo orden y categoría", http.StatusConflict)
+			return
+		}
+	}
+
+	lastInsertID, err := dataBase.Insert(true, "INSERT INTO project_statuses (status_name, `order`, `category_id`) VALUES (?, ?, ?)", s.StatusName, s.Order, s.CategoryID)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -70,7 +87,7 @@ func getProjectStatusByID(w http.ResponseWriter, r *http.Request) {
 	statusID := chi.URLParam(r, "id")
 
 	var s models.ProjectStatus
-	rows, err := dataBase.SelectRow("SELECT id, status_name, `order` FROM project_statuses WHERE id = ?", statusID)
+	rows, err := dataBase.SelectRow("SELECT p.id, p.status_name, p.order, p.category_id, c.name FROM project_statuses p JOIN categories c ON p.category_id = c.id WHERE p.id = ?", statusID)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -80,7 +97,7 @@ func getProjectStatusByID(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	rows.Scan(&s.ID, &s.StatusName, &s.Order)
+	rows.Scan(&s.ID, &s.StatusName, &s.Order, &s.CategoryID, &s.CategoryName)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s)
@@ -94,8 +111,23 @@ func updateProjectStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verificar si existe un registro con el mismo order y category_id, si existe y no es el mismo registro que se está actualizando, devolver un error
+	var existing models.ProjectStatus
+	row, err := dataBase.SelectRow("SELECT id FROM project_statuses WHERE `order` = ? AND category_id = ?", s.Order, s.CategoryID)
+	if err != nil && err != sql.ErrNoRows {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = row.Scan(&existing.ID)
+	if err != sql.ErrNoRows {
+		if existing.ID != s.ID {
+			http.Error(w, "Ya existe un estado de proyecto con el mismo orden y categoría", http.StatusConflict)
+			return
+		}
+	}
+
 	var old models.ProjectStatus
-	rows, err := dataBase.SelectRow("SELECT id, status_name, `order` FROM project_statuses WHERE id = ?", statusID)
+	rows, err := dataBase.SelectRow("SELECT id, status_name, `order`, category_id FROM project_statuses WHERE id = ?", statusID)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -105,7 +137,7 @@ func updateProjectStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	rows.Scan(&old.ID, &old.StatusName, &old.Order)
+	rows.Scan(&old.ID, &old.StatusName, &old.Order, &old.CategoryID)
 
 	oldValueBytes, err := json.Marshal(old)
 	if err != nil {
@@ -114,7 +146,7 @@ func updateProjectStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	oldValue := string(oldValueBytes)
 
-	_, err = dataBase.Update(true, "UPDATE project_statuses SET status_name = ?, `order` = ? WHERE id = ?", s.StatusName, s.Order, statusID)
+	_, err = dataBase.Update(true, "UPDATE project_statuses SET status_name = ?, `order` = ?, category_id = ? WHERE id = ?", s.StatusName, s.Order, s.CategoryID, statusID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -140,7 +172,7 @@ func deleteProjectStatus(w http.ResponseWriter, r *http.Request) {
 	statusID := chi.URLParam(r, "id")
 
 	var old models.ProjectStatus
-	rows, err := dataBase.SelectRow("SELECT id, status_name, `order` FROM project_statuses WHERE id = ?", statusID)
+	rows, err := dataBase.SelectRow("SELECT id, status_name, `order`, category_id FROM project_statuses WHERE id = ?", statusID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Estado de proyecto no encontrada", http.StatusNotFound)
@@ -149,7 +181,7 @@ func deleteProjectStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	rows.Scan(&old.ID, &old.StatusName, &old.Order)
+	rows.Scan(&old.ID, &old.StatusName, &old.Order, &old.CategoryID)
 
 	oldValueBytes, err := json.Marshal(old)
 	if err != nil {
