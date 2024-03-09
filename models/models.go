@@ -34,6 +34,29 @@ type Client struct {
 	UpdatedAt  string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 }
 
+type Contact struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Position  string `json:"position,omitempty"` // Omite si está vacío
+	Phone     string `json:"phone,omitempty"`    // Omite si está vacío
+	Email     string `json:"email"`
+	ClientIDs []int  `json:"client_ids,omitempty"` // Omite si está vacío
+	CreatedAt string `json:"created_at,omitempty"` // Omite si está vacío, manejado por la DB
+	UpdatedAt string `json:"updated_at,omitempty"` // Omite si está vacío, manejado por la DB
+}
+
+// ContactWithClients es una estructura extendida de Contact para incluir los ClientIDs asociados
+type ContactWithClients struct {
+	Contact         // Incorporación anónima de la estructura Contact
+	ClientIDs []int `json:"client_ids"` // Slice de IDs de clientes
+}
+
+// ClientContact representa la relación muchos a muchos entre Contactos y Clientes
+type ClientContact struct {
+	ClientID  int `json:"client_id"`
+	ContactID int `json:"contact_id"`
+}
+
 type Log struct {
 	ID        int    `json:"id"`
 	Type      string `json:"type"`

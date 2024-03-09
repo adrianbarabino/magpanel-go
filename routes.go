@@ -68,6 +68,16 @@ func initRoutes() *chi.Mux {
 			})
 		})
 
+		r.Route("/contacts", func(r chi.Router) {
+			r.Get("/", getContacts)
+			r.Post("/", createContact)
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", getContactByID)
+				r.Put("/", updateContact)
+				r.Delete("/", deleteContact)
+			})
+		})
+
 		// Rutas para "projects"
 		r.Route("/projects", func(r chi.Router) {
 			r.Get("/", getProjects)
