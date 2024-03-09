@@ -94,7 +94,7 @@ func getProjectByID(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	rows.Scan(&p.ID, &p.Name, &p.Description, &p.CategoryID, &p.CategoryName, &p.StatusID, &p.StatusName, &p.LocationID, &p.LocationName, &p.AuthorID, &p.AuthorUsername, &p.CreatedAt, &p.UpdatedAt)
+	rows.Scan(&p.ID, &p.Name, &p.Description, &p.CategoryID, &p.CategoryName, &p.StatusID, &p.StatusName, &p.LocationID, &p.LocationName, &p.AuthorID, &p.AuthorName, &p.CreatedAt, &p.UpdatedAt)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(p)

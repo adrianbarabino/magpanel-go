@@ -63,19 +63,19 @@ type ProjectStatus struct {
 }
 
 type Project struct {
-	ID             int    `json:"id"`
-	Name           string `json:"name"`
-	Description    string `json:"description,omitempty"`
-	CategoryID     int    `json:"category_id,omitempty"`
-	StatusID       int    `json:"status_id"`
-	LocationID     int    `json:"location_id,omitempty"`
-	AuthorID       int    `json:"author_id"`
-	CategoryName   string `json:"category_name,omitempty"`
-	StatusName     string `json:"status_name,omitempty"`
-	LocationName   string `json:"location_name,omitempty"`
-	AuthorUsername string `json:"author_name,omitempty"`
-	CreatedAt      string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
-	UpdatedAt      string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	Description  string `json:"description,omitempty"`
+	CategoryID   int    `json:"category_id,omitempty"`
+	StatusID     int    `json:"status_id"`
+	LocationID   int    `json:"location_id,omitempty"`
+	AuthorID     int    `json:"author_id"`
+	CategoryName string `json:"category_name,omitempty"`
+	StatusName   string `json:"status_name,omitempty"`
+	LocationName string `json:"location_name,omitempty"`
+	AuthorName   string `json:"author_name,omitempty"`
+	CreatedAt    string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
+	UpdatedAt    string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 }
 type Setting struct {
 	ID          int    `json:"id"`
