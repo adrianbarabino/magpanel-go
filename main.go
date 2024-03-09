@@ -13,6 +13,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+var totalRequests int
 var uptime time.Time
 var dataBase *database.DatabaseStruct
 var jwtKey []byte

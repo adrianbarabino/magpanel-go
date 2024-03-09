@@ -27,6 +27,6 @@ func getMailgunConfig() (string, string, error) {
 
 func getVersion(w http.ResponseWriter, r *http.Request) {
 	since := time.Since(uptime)
-	returnString := "API v1.1.7 - Uptime: " + since.String()
+	returnString := "API v1.1.7 - Uptime: " + since.String() + " - Total requests: " + string(totalRequests)
 	w.Write([]byte(returnString))
 }
