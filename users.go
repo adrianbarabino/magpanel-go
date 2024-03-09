@@ -67,10 +67,16 @@ func usernameExists(username string) bool {
 		}
 		// Manejar otros posibles errores
 		log.Printf("Error al verificar el nombre de usuario: %v\n", err)
+		return false
 	}
-	rows.Scan(&id)
-	// Si la consulta no devolvió ErrNoRows, significa que se encontró un registro
-	return true
+	err = rows.Scan(&id)
+	if err != nil {
+		// Manejar errores al escanear
+		log.Printf("Error al escanear el ID del usuario: %v\n", err)
+		return false
+	}
+	// Si la consulta no devolvió ErrNoRows y se pudo escanear el ID, significa que se encontró un registro
+	return id != 0
 }
 
 func generateAccessToken(userID int) (string, error) {
