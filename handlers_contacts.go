@@ -13,7 +13,7 @@ import (
 )
 
 func createContact(w http.ResponseWriter, r *http.Request) {
-	var contactData models.ContactWithClients // Asume esta estructura tiene los ClientIDs
+	var contactData models.ContactWithClientsAndProviders // Asume esta estructura tiene los ClientIDs
 
 	if err := json.NewDecoder(r.Body).Decode(&contactData); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -36,6 +36,15 @@ func createContact(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Insertar relaciones en la tabla intermedia client_contact
+	for _, providerID := range contactData.ProviderIDs {
+		_, err := dataBase.Insert(false, "INSERT INTO provider_contact(provider_id, contact_id) VALUES(?, ?)", providerID, contactData.ID)
+		if err != nil {
+			// Considerar rollback o manejo de errores adecuado aquí
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -44,7 +53,7 @@ func createContact(w http.ResponseWriter, r *http.Request) {
 
 func updateContact(w http.ResponseWriter, r *http.Request) {
 	contactID := chi.URLParam(r, "id")
-	var contactData models.ContactWithClients // Asume esta estructura tiene los ClientIDs
+	var contactData models.ContactWithClientsAndProviders // Asume esta estructura tiene los ClientIDs
 
 	if err := json.NewDecoder(r.Body).Decode(&contactData); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -65,9 +74,26 @@ func updateContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, err = dataBase.Delete(false, "DELETE FROM provider_contact WHERE contact_id = ?", contactID)
+	if err != nil {
+		// Considerar rollback o manejo de errores adecuado aquí
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// Luego, insertar nuevas relaciones en la tabla intermedia client_contact
 	for _, clientID := range contactData.ClientIDs {
 		_, err := dataBase.Insert(false, "INSERT INTO client_contact(client_id, contact_id) VALUES(?, ?)", clientID, contactID)
+		if err != nil {
+			// Considerar rollback o manejo de errores adecuado aquí
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Luego, insertar nuevas relaciones en la tabla intermedia provider_contact
+	for _, providerID := range contactData.ProviderIDs {
+		_, err := dataBase.Insert(false, "INSERT INTO provider_contact(provider_id, contact_id) VALUES(?, ?)", providerID, contactID)
 		if err != nil {
 			// Considerar rollback o manejo de errores adecuado aquí
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -91,6 +117,7 @@ func getContacts(w http.ResponseWriter, r *http.Request) {
 
 	for rowsC.Next() {
 		var c models.Contact
+		var con models.Connections
 		if err := rowsC.Scan(&c.ID, &c.Name, &c.Position, &c.Phone, &c.Email); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -98,6 +125,7 @@ func getContacts(w http.ResponseWriter, r *http.Request) {
 
 		// Obtener los ClientIDs asociados a este contacto
 		contactID := c.ID
+
 		var clientIDs []int
 		rows, err := dataBase.Select("SELECT client_id FROM client_contact WHERE contact_id = ?", contactID)
 		if err != nil {
@@ -114,7 +142,28 @@ func getContacts(w http.ResponseWriter, r *http.Request) {
 			}
 			clientIDs = append(clientIDs, clientID)
 		}
-		c.ClientIDs = clientIDs
+		//clientIDs = append(clientIDs, 1)
+
+		con.ClientIDs = clientIDs
+
+		var providerIDs []int
+		rows, err = dataBase.Select("SELECT provider_id FROM provider_contact WHERE contact_id = ?", contactID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var providerID int
+			if err := rows.Scan(&providerID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			providerIDs = append(providerIDs, providerID)
+		}
+		con.ProviderIDs = providerIDs
+		c.Connections = con
 		contacts = append(contacts, c)
 	}
 
@@ -177,13 +226,35 @@ func getContactByID(w http.ResponseWriter, r *http.Request) {
 		clientIDs = append(clientIDs, clientID)
 	}
 
+	// Providers
+
+	// Obtener los ClientIDs asociados a este contacto
+	var providerIDs []int
+	rows, err = dataBase.Select("SELECT provider_id FROM provider_contact WHERE contact_id = ?", contactID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var providerID int
+		if err := rows.Scan(&providerID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		providerIDs = append(providerIDs, providerID)
+	}
+
 	// Envío del contacto y sus ClientIDs como respuesta
 	response := struct {
 		models.Contact
-		ClientIDs []int `json:"client_ids"`
+		ClientIDs   []int `json:"client_ids"`
+		ProviderIDs []int `json:"provider_ids"`
 	}{
-		Contact:   contact,
-		ClientIDs: clientIDs,
+		Contact:     contact,
+		ClientIDs:   clientIDs,
+		ProviderIDs: providerIDs,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

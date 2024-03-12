@@ -79,13 +79,38 @@ func usernameExists(username string) bool {
 	return id != 0
 }
 
-func generateAccessToken(userID int) (string, error) {
-	expirationTime := time.Now().Add(24 * time.Hour) // El token expira en 24 horas
+// Verificar si el nombre de usuario ya existe en la base de datos
+func userExists(userID int) bool {
+	var name string
+	rows, err := dataBase.SelectRow("SELECT name FROM users WHERE id = ?", userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No se encontró el nombre de usuario, por lo que no existe
+			return false
+		}
+		// Manejar otros posibles errores
+		log.Printf("Error al verificar el ID: %v\n", err)
+		return false
+	}
+	err = rows.Scan(&name)
+	if err != nil {
+		// Manejar errores al escanear
+		log.Printf("Error al escanear el Nombre del usuario: %v\n", err)
+		return false
+	}
+	// Si la consulta no devolvió ErrNoRows y se pudo escanear el ID, significa que se encontró un registro
+	return userID != 0
+}
+
+func generateAccessToken(userID int, userName string) (string, error) {
+
+	expirationTime := time.Now().Add(24 * time.Hour * 180) // El token expira en 90 días
 
 	// Crear un nuevo token que será del tipo JWT
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userID, // Puedes añadir más datos del usuario según sea necesario
-		"exp":     expirationTime.Unix(),
+		"user_id":   userID,
+		"user_name": userName,
+		"exp":       expirationTime.Unix(),
 	})
 
 	// Firmar el token con tu clave secreta
@@ -196,6 +221,13 @@ func checkAccessToken(accessToken string) (int, error) {
 
 	// Obtener el ID de usuario desde las reclamaciones
 	userID := int(claims["user_id"].(float64))
+
+	// Verificar si el usuario aún existe en la base de datos
+	exists := userExists(userID)
+	if !exists {
+		// Si el usuario no existe, considera el token como inválido
+		return 0, fmt.Errorf("El usuario asociado al token ya no existe")
+	}
 
 	return userID, nil
 }

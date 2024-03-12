@@ -25,12 +25,12 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 	var u models.User
 	var salt string
 
-	rows, err := dataBase.SelectRow("SELECT id, username, password_hash, salt FROM users WHERE username = ?", loginData.Username)
+	rows, err := dataBase.SelectRow("SELECT id, name, username, password_hash, salt FROM users WHERE username = ?", loginData.Username)
 	if err != nil {
 		http.Error(w, "No se encontró el usuario", http.StatusInternalServerError)
 		return
 	}
-	rows.Scan(&u.ID, &u.Username, &u.PasswordHash, &salt)
+	rows.Scan(&u.ID, &u.Name, &u.Username, &u.PasswordHash, &salt)
 
 	log.Printf("Intento de login al usuario: %s, contraseña: %s y salt: %s", u.Username, u.PasswordHash, salt)
 
@@ -44,7 +44,7 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := generateAccessToken(u.ID)
+	accessToken, err := generateAccessToken(u.ID, u.Name)
 	if err != nil {
 		http.Error(w, "Error al generar el Access Token", http.StatusInternalServerError)
 		return
