@@ -118,7 +118,7 @@ func getProjectByID(w http.ResponseWriter, r *http.Request) {
 	// Change the query for the project to include the status, author, location and category names
 
 	// also return the category, status, location, author NAME and ID, both of them
-	rows, err := dataBase.SelectRow("SELECT p.id, p.code, p.name, p.description, c.id, c.name, ps.id, ps.status_name, l.id, l.name, u.id, u.name, p.client_id, cl.name, p.created_at, p.updated_at FROM projects p JOIN categories c ON p.category_id = c.id JOIN project_statuses ps ON p.status_id = ps.id JOIN locations l ON p.location_id = l.id JOIN users u ON p.author_id = u.id JOIN clients cl ON p.client_id = cl.id WHERE p.id = ?", projectID)
+	rows, err := dataBase.SelectRow("SELECT p.id, p.code, p.name, p.description, c.id, c.name, ps.id, ps.status_name, l.id, l.name, l.lat, l.lng, u.id, u.name, p.client_id, cl.name, p.created_at, p.updated_at FROM projects p JOIN categories c ON p.category_id = c.id JOIN project_statuses ps ON p.status_id = ps.id JOIN locations l ON p.location_id = l.id JOIN users u ON p.author_id = u.id JOIN clients cl ON p.client_id = cl.id WHERE p.id = ?", projectID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Proyecto no encontrado", http.StatusNotFound)
@@ -127,7 +127,7 @@ func getProjectByID(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	rows.Scan(&p.ID, &p.Code, &p.Name, &p.Description, &p.CategoryID, &p.CategoryName, &p.StatusID, &p.StatusName, &p.LocationID, &p.LocationName, &p.AuthorID, &p.AuthorName, &p.ClientID, &p.ClientName, &p.CreatedAt, &p.UpdatedAt)
+	rows.Scan(&p.ID, &p.Code, &p.Name, &p.Description, &p.CategoryID, &p.CategoryName, &p.StatusID, &p.StatusName, &p.LocationID, &p.LocationName, &p.LocationLat, &p.LocationLng, &p.AuthorID, &p.AuthorName, &p.ClientID, &p.ClientName, &p.CreatedAt, &p.UpdatedAt)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(p)

@@ -14,7 +14,7 @@ import (
 func getReports(w http.ResponseWriter, r *http.Request) {
 	var reports []models.Report
 
-	rows, err := dataBase.Select("SELECT id, project_id, category_id, fields, author_id, created_at, updated_at FROM reports")
+	rows, err := dataBase.Select("SELECT r.id, r.project_id, r.category_id, r.fields, r.author_id, r.created_at, r.updated_at, c.name, u.name FROM reports r JOIN categories c ON r.category_id = c.id JOIN users u ON r.author_id = u.id ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -23,7 +23,7 @@ func getReports(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var report models.Report
-		if err := rows.Scan(&report.ID, &report.ProjectID, &report.CategoryID, &report.Fields, &report.AuthorID, &report.CreatedAt, &report.UpdatedAt); err != nil {
+		if err := rows.Scan(&report.ID, &report.ProjectID, &report.CategoryID, &report.Fields, &report.AuthorID, &report.CreatedAt, &report.UpdatedAt, &report.CategoryName, &report.AuthorName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -39,7 +39,7 @@ func getReportsByProject(w http.ResponseWriter, r *http.Request) {
 
 	var reports []models.Report
 
-	rows, err := dataBase.Select("SELECT id, project_id, category_id, fields, author_id, created_at, updated_at FROM reports WHERE project_id = ?", projectID)
+	rows, err := dataBase.Select("SELECT r.id, r.project_id, r.category_id, r.fields, r.author_id, r.created_at, r.updated_at, c.name, u.name FROM reports r JOIN categories c ON r.category_id = c.id JOIN users u ON r.author_id = u.id WHERE r.project_id = ?", projectID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -48,7 +48,7 @@ func getReportsByProject(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var report models.Report
-		if err := rows.Scan(&report.ID, &report.ProjectID, &report.CategoryID, &report.Fields, &report.AuthorID, &report.CreatedAt, &report.UpdatedAt); err != nil {
+		if err := rows.Scan(&report.ID, &report.ProjectID, &report.CategoryID, &report.Fields, &report.AuthorID, &report.CreatedAt, &report.UpdatedAt, &report.CategoryName, &report.AuthorName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -85,16 +85,11 @@ func createReport(w http.ResponseWriter, r *http.Request) {
 func getReportByID(w http.ResponseWriter, r *http.Request) {
 	reportID := chi.URLParam(r, "id")
 
-	var report struct {
-		models.Report
-		ProjectName  string `json:"project_name"`
-		CategoryName string `json:"category_name"`
-		AuthorName   string `json:"author_name"`
-	}
+	var report models.Report
 
 	query := `
         SELECT r.id, r.project_id, r.category_id, r.fields, r.author_id, r.created_at, r.updated_at,
-               p.name AS project_name, c.name AS category_name, u.name AS author_name
+		p.name AS project_name, p.code AS project_code, c.name AS category_name, u.name AS author_name
         FROM reports r
         LEFT JOIN projects p ON r.project_id = p.id
         LEFT JOIN categories c ON r.category_id = c.id
@@ -107,7 +102,7 @@ func getReportByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := row.Scan(&report.ID, &report.ProjectID, &report.CategoryID, &report.Fields, &report.AuthorID, &report.CreatedAt, &report.UpdatedAt, &report.ProjectName, &report.CategoryName, &report.AuthorName); err != nil {
+	if err := row.Scan(&report.ID, &report.ProjectID, &report.CategoryID, &report.Fields, &report.AuthorID, &report.CreatedAt, &report.UpdatedAt, &report.ProjectName, &report.ProjectCode, &report.CategoryName, &report.AuthorName); err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Reporte no encontrado", http.StatusNotFound)
 		} else {
@@ -117,9 +112,9 @@ func getReportByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Opcional: Registro de la acción de lectura del reporte
-	if err := insertLog("read_report", fmt.Sprintf("Report ID %s accessed", reportID), "", r); err != nil {
-		log.Printf("Error al insertar el registro de lectura de reporte: %v", err)
-	}
+	// if err := insertLog("read_report", fmt.Sprintf("Report ID %s accessed", reportID), "", r); err != nil {
+	// 	log.Printf("Error al insertar el registro de lectura de reporte: %v", err)
+	// }
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(report)

@@ -133,13 +133,17 @@ type ProjectStatus struct {
 }
 
 type Report struct {
-	ID         int             `json:"id"`
-	ProjectID  int             `json:"project_id"`
-	CategoryID int             `json:"category_id,omitempty"`
-	Fields     json.RawMessage `json:"fields"` // Tratando 'fields' como datos JSON crudos
-	AuthorID   int             `json:"author_id,omitempty"`
-	CreatedAt  string          `json:"created_at,omitempty"`
-	UpdatedAt  string          `json:"updated_at,omitempty"`
+	ID           int             `json:"id"`
+	ProjectID    int             `json:"project_id"`
+	ProjectName  string          `json:"project_name,omitempty"`
+	ProjectCode  string          `json:"project_code,omitempty"`
+	CategoryID   int             `json:"category_id,omitempty"`
+	CategoryName string          `json:"category_name,omitempty"`
+	Fields       json.RawMessage `json:"fields"` // Tratando 'fields' como datos JSON crudos
+	AuthorID     int             `json:"author_id,omitempty"`
+	AuthorName   string          `json:"author_name,omitempty"`
+	CreatedAt    string          `json:"created_at,omitempty"`
+	UpdatedAt    string          `json:"updated_at,omitempty"`
 }
 
 type Project struct {
@@ -156,6 +160,8 @@ type Project struct {
 	CategoryName string `json:"category_name,omitempty"`
 	StatusName   string `json:"status_name,omitempty"`
 	LocationName string `json:"location_name,omitempty"`
+	LocationLat  string `json:"location_lat,omitempty"`
+	LocationLng  string `json:"location_lng,omitempty"`
 	AuthorName   string `json:"author_name,omitempty"`
 	CreatedAt    string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 	UpdatedAt    string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
