@@ -83,6 +83,14 @@ func initRoutes() *chi.Mux {
 			r.Get("/", getProjects)
 			r.Post("/", createProject)
 			r.Route("/{id}", func(r chi.Router) {
+				// rutas para reportes de proyectos
+				r.Get("/reports", getReportsByProject)
+				r.Post("/reports", createReport)
+				r.Route("/reports/{reportID}", func(r chi.Router) {
+					r.Get("/", getReportByID)
+					r.Put("/", updateReport)
+					r.Delete("/", deleteReport)
+				})
 				r.Get("/", getProjectByID)
 				r.Put("/", updateProject)
 				r.Delete("/", deleteProject)
@@ -121,6 +129,7 @@ func initRoutes() *chi.Mux {
 			})
 		})
 		r.Get("/logs", getLogs)
+		r.Get("/reports", getReports)
 
 		// Rutas para "settings"
 		r.Route("/settings", func(r chi.Router) {

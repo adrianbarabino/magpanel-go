@@ -45,6 +45,6 @@ func SendRecoveryEmail(config MailConfig, email, token string) error {
 	message.SetHtml(body)
 
 	// Enviar el correo electrónico
-	_, _, err = mg.Send(message)
+	_, _, err := mg.Send(message)
 	return err
 }

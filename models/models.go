@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/golang-jwt/jwt"
@@ -35,21 +36,21 @@ type Client struct {
 }
 
 type Contact struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Position    string `json:"position,omitempty"` // Omite si está vacío
-	Phone       string `json:"phone,omitempty"`    // Omite si está vacío
-	Email       string `json:"email"`
-	ClientIDs   []int  `json:"client_ids,omitempty"`    // Omite si está vacío
-	ProviderIDs []int  `json:"provider_ids,omitempty"` // Omite si está vacío
-    Connections Connections `json:"connections,omitempty"` // Omite si está vacío
+	ID          int         `json:"id"`
+	Name        string      `json:"name"`
+	Position    string      `json:"position,omitempty"` // Omite si está vacío
+	Phone       string      `json:"phone,omitempty"`    // Omite si está vacío
+	Email       string      `json:"email"`
+	ClientIDs   []int       `json:"client_ids,omitempty"`   // Omite si está vacío
+	ProviderIDs []int       `json:"provider_ids,omitempty"` // Omite si está vacío
+	Connections Connections `json:"connections,omitempty"`  // Omite si está vacío
 
 	CreatedAt string `json:"created_at,omitempty"` // Omite si está vacío, manejado por la DB
 	UpdatedAt string `json:"updated_at,omitempty"` // Omite si está vacío, manejado por la DB
 }
 type Connections struct {
-    ClientIDs   []int `json:"client_ids,omitempty"`    // Omite si está vacío
-    ProviderIDs []int `json:"provider_ids,omitempty"` // Omite si está vacío
+	ClientIDs   []int `json:"client_ids,omitempty"`   // Omite si está vacío
+	ProviderIDs []int `json:"provider_ids,omitempty"` // Omite si está vacío
 }
 
 // ContactWithClients es una estructura extendida de Contact para incluir los ClientIDs asociados
@@ -129,6 +130,16 @@ type ProjectStatus struct {
 	CategoryID   int    `json:"category_id,omitempty"`
 	CategoryName string `json:"category_name,omitempty"`
 	Order        int    `json:"order"`
+}
+
+type Report struct {
+	ID         int             `json:"id"`
+	ProjectID  int             `json:"project_id"`
+	CategoryID int             `json:"category_id,omitempty"`
+	Fields     json.RawMessage `json:"fields"` // Tratando 'fields' como datos JSON crudos
+	AuthorID   int             `json:"author_id,omitempty"`
+	CreatedAt  string          `json:"created_at,omitempty"`
+	UpdatedAt  string          `json:"updated_at,omitempty"`
 }
 
 type Project struct {
