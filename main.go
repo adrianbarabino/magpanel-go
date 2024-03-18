@@ -11,12 +11,16 @@ import (
 	"gopkg.in/ini.v1"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
 var totalRequests int
 var uptime time.Time
 var dataBase *database.DatabaseStruct
+var minioClient *minio.Client
 var jwtKey []byte
+var bucketName string
 
 func main() {
 	initConfig()
@@ -50,6 +54,23 @@ func initConfig() {
 	password := dbSection.Key("DB_PASS").String()
 	host := dbSection.Key("DB_HOST").String()
 	databaseName := dbSection.Key("DB_NAME").String()
+	endpoint := dataSection.Key("ENDPOINT").String()
+	accessKeyID := dataSection.Key("ACCESS_KEY_ID").String()
+	secretAccessKey := dataSection.Key("SECRET_ACCESS_KEY").String()
+	bucketName = dataSection.Key("BUCKET_NAME").String()
+
+	// Inicializa un cliente de DigitalOcean Spaces
+	minioClient, err = minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
+		Secure: true,
+	})
+	if err != nil {
+		log.Fatalln(err)
+	}
+	minioClient.SetAppInfo("magpanel", "1.0.0")
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	// Inicializar la base de datos
 	dataBase, err = database.NewDatabase(username, password, databaseName, host)

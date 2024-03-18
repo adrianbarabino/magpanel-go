@@ -46,6 +46,8 @@ func initRoutes() *chi.Mux {
 
 	r.Group(func(r chi.Router) {
 		r.Use(AuthMiddleware)
+		r.Post("/attachments", HandleUpload(minioClient, bucketName))
+		r.Post("/attachment-remove", HandleRemove(minioClient, bucketName))
 
 		// Definir las rutas para usuarios
 		r.Route("/users", func(r chi.Router) {
