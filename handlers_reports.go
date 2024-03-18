@@ -66,6 +66,15 @@ func createReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	currentUser, err := getCurrentUser(r)
+
+	if err != nil {
+		http.Error(w, "Error al obtener el usuario actual", http.StatusInternalServerError)
+		return
+	}
+
+	report.AuthorID = currentUser.ID
+
 	lastInsertID, err := dataBase.Insert(true, "INSERT INTO reports (project_id, category_id, fields, author_id) VALUES (?, ?, ?, ?)", report.ProjectID, report.CategoryID, report.Fields, report.AuthorID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
