@@ -20,11 +20,20 @@ func getCategories(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var categories []models.Category
+
 	for rows.Next() {
 		var c models.Category
-		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &c.Code, &c.FieldsJSON); err != nil {
+		var codeNullString sql.NullString
+
+		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &codeNullString, &c.FieldsJSON); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		// Si el valor es válido, asigne a c.Code, de lo contrario, c.Code será una cadena vacía
+		if codeNullString.Valid {
+			c.Code = codeNullString.String
+		} else {
+			c.Code = ""
 		}
 
 		if c.FieldsJSON != "" {
@@ -32,13 +41,6 @@ func getCategories(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Error al deserializar los campos: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-		}
-
-		// Si el código es válido, lo asignamos, de lo contrario, queda como vacío
-		if c.Code.Valid {
-			c.Code.String = c.Code.String // Esto es redundante pero muestra la intención
-		} else {
-			c.Code.String = ""
 		}
 
 		categories = append(categories, c)
@@ -56,7 +58,7 @@ func createCategory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// if is Type project and have c.Code, check if there any category with the same code COALESCE
-	if c.Type == "projects" && c.Code.Valid {
+	if c.Type == "projects" && c.Code != "" {
 		// check if there any category with the same code
 		var existing models.Category
 		row, err := dataBase.SelectRow("SELECT id FROM categories WHERE code = ?", c.Code)
@@ -90,7 +92,7 @@ func createCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if c.Type == "projects" && c.Code.Valid {
+	if c.Type == "projects" && c.Code != "" {
 		// update the code
 		_, err = dataBase.Update(true, "UPDATE categories SET code = ? WHERE id = ?", c.Code, lastInsertID)
 		if err != nil {
@@ -225,6 +227,8 @@ func getCategoryByID(w http.ResponseWriter, r *http.Request) {
 	categoryID := chi.URLParam(r, "id") // Obtiene el ID de la categoría de la URL
 
 	var c models.Category
+	var codeNullString sql.NullString
+
 	rows, err := dataBase.SelectRow("SELECT id, code, type, name, fields FROM categories WHERE id = ?", categoryID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -236,9 +240,15 @@ func getCategoryByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Asumiendo que FieldsJSON es un campo en models.Category que se utiliza para escanear el JSON crudo
-	if err := rows.Scan(&c.ID, &c.Code, &c.Type, &c.Name, &c.FieldsJSON); err != nil {
+	if err := rows.Scan(&c.ID, &codeNullString, &c.Type, &c.Name, &c.FieldsJSON); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	// Si el valor es válido, asigne a c.Code, de lo contrario, c.Code será una cadena vacía
+	if codeNullString.Valid {
+		c.Code = codeNullString.String
+	} else {
+		c.Code = ""
 	}
 
 	if c.FieldsJSON != "" {

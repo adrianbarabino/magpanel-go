@@ -114,12 +114,12 @@ type Field struct {
 }
 
 type Category struct {
-	ID         int            `json:"id"`
-	Type       string         `json:"type"`
-	Code       sql.NullString `json:"code,omitempty"`
-	Name       string         `json:"name"`
-	Fields     []Field        `json:"fields,omitempty"`
-	FieldsJSON string         `json:"-"` // Usado para escanear desde la base de datos
+	ID         int     `json:"id"`
+	Type       string  `json:"type"`
+	Code       string  `json:"code,omitempty"`
+	Name       string  `json:"name"`
+	Fields     []Field `json:"fields,omitempty"`
+	FieldsJSON string  `json:"-"` // Usado para escanear desde la base de datos
 }
 type Location struct {
 	ID      int     `json:"id"`
