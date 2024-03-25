@@ -170,6 +170,17 @@ func createFeedback(w http.ResponseWriter, r *http.Request) {
 
 	row.Scan(&adminEmail)
 
+	// if got navigator, screen and page, add it to the message
+	if f.Navigator != "" {
+		f.Message += fmt.Sprintf("\n\nNavigator: %s", f.Navigator)
+	}
+	if f.Screen != "" {
+		f.Message += fmt.Sprintf("\n\nScreen: %s", f.Screen)
+	}
+	if f.Page != "" {
+		f.Message += fmt.Sprintf("\n\nPage: %s", f.Page)
+	}
+
 	// Obtener la configuración de Mailgun desde la base de datos
 	domain, apiKey, err := getMailgunConfig()
 	if err != nil {
@@ -184,6 +195,7 @@ func createFeedback(w http.ResponseWriter, r *http.Request) {
 	sender := "no-reply@mag-servicios.com" // Considera también almacenar esto en la tabla de configuraciones
 	subject := "[MAG Servicios] Nuevo Feedback de Usuario"
 	logoURL := "https://mag-servicios.com/wp-content/uploads/2022/12/01-4.png"
+
 	body := fmt.Sprintf(`
 	<html>
 	<body>

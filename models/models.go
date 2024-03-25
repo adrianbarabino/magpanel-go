@@ -114,9 +114,12 @@ type Field struct {
 	Required string `json:"required,omitempty"` // Omite si está vacío
 }
 type Feedback struct {
-	ID      int    `json:"id"`
-	UserID  int    `json:"user_id"`
-	Message string `json:"message"`
+	ID        int    `json:"id"`
+	UserID    int    `json:"user_id"`
+	Message   string `json:"message"`
+	Screen    string `json:"screen,omitempty"`    // Omite si está vacío
+	Navigator string `json:"navigator,omitempty"` // Omite si está vacío
+	Page      string `json:"page,omitempty"`      // Omite si está vacío
 }
 
 type Category struct {
