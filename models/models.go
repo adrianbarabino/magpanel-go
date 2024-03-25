@@ -113,6 +113,11 @@ type Field struct {
 	Type     string `json:"type"`
 	Required string `json:"required,omitempty"` // Omite si está vacío
 }
+type Feedback struct {
+	ID      int    `json:"id"`
+	UserID  int    `json:"user_id"`
+	Message string `json:"message"`
+}
 
 type Category struct {
 	ID         int     `json:"id"`

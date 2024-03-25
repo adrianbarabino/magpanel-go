@@ -140,6 +140,7 @@ func initRoutes() *chi.Mux {
 			})
 		})
 		r.Get("/logs", getLogs)
+		r.Post("/feedback", createFeedback)
 
 		// Rutas para "settings"
 		r.Route("/settings", func(r chi.Router) {
