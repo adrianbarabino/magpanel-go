@@ -109,8 +109,9 @@ type Log struct {
 	CreatedAt string `json:"created_at,omitempty"`
 }
 type Field struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Required string `json:"required,omitempty"` // Omite si está vacío
 }
 
 type Category struct {
