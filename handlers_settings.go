@@ -139,7 +139,21 @@ func deleteSetting(w http.ResponseWriter, r *http.Request) {
 func getLogs(w http.ResponseWriter, r *http.Request) {
 	var logs []models.Log
 
-	rows, err := dataBase.Select("SELECT logs.id, logs.type, logs.old_value, logs.new_value, logs.user_id, logs.created_at, users.username FROM logs JOIN users ON logs.user_id = users.id ORDER BY logs.created_at DESC")
+	query := "SELECT logs.id, logs.type, logs.old_value, logs.new_value, logs.user_id, logs.created_at, users.username FROM logs JOIN users ON logs.user_id = users.id "
+	if order := r.URL.Query().Get("order"); order != "" {
+		query += "ORDER BY " + order
+	} else {
+		query += "ORDER BY logs.created_at DESC "
+
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		query += "LIMIT " + limit + " "
+	}
+	if offset := r.URL.Query().Get("offset"); offset != "" {
+		query += "OFFSET " + offset
+	}
+
+	rows, err := dataBase.Select(query)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

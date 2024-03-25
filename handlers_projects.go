@@ -13,9 +13,23 @@ import (
 
 func getProjects(w http.ResponseWriter, r *http.Request) {
 	var projects []models.Project
+	// if get GET["limit"] and GET["offset"] values, use them in the query
+	// if GET["limit"] is not provided, get all
+	// if GET["offset"] is not provided, start from 0
+	// if GET["order"] is provided, order by that column
+	query := "SELECT p.id, p.code, p.name, p.description, p.category_id, p.client_id, cl.name, p.status_id, p.location_id, p.author_id, p.created_at, p.updated_at, c.name, ps.status_name, l.name, u.name FROM projects p JOIN categories c ON p.category_id = c.id JOIN project_statuses ps ON p.status_id = ps.id JOIN locations l ON p.location_id = l.id JOIN users u ON p.author_id = u.id JOIN clients cl ON p.client_id = cl.id "
+	if order := r.URL.Query().Get("order"); order != "" {
+		query += "ORDER BY " + order + " "
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		query += "LIMIT " + limit + " "
+	}
+	if offset := r.URL.Query().Get("offset"); offset != "" {
+		query += "OFFSET " + offset
+	}
 
 	// get also the categoryName, statusName, locationName and authorName with a JOIN, c.name and client_id and name
-	rows, err := dataBase.Select("SELECT p.id, p.code, p.name, p.description, p.category_id, p.client_id, cl.name, p.status_id, p.location_id, p.author_id, p.created_at, p.updated_at, c.name, ps.status_name, l.name, u.name FROM projects p JOIN categories c ON p.category_id = c.id JOIN project_statuses ps ON p.status_id = ps.id JOIN locations l ON p.location_id = l.id JOIN users u ON p.author_id = u.id JOIN clients cl ON p.client_id = cl.id ")
+	rows, err := dataBase.Select(query)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
