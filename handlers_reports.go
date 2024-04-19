@@ -7,6 +7,7 @@ import (
 	"log"
 	"magpanel/models"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -14,7 +15,31 @@ import (
 func getReports(w http.ResponseWriter, r *http.Request) {
 	var reports []models.Report
 
-	rows, err := dataBase.Select("SELECT r.id, r.project_id, r.category_id, r.fields, r.author_id, r.created_at, r.updated_at, c.name, u.name FROM reports r JOIN categories c ON r.category_id = c.id JOIN users u ON r.author_id = u.id ")
+	query := "SELECT r.id, r.project_id, r.category_id, r.fields, r.author_id, r.created_at, r.updated_at, c.name, u.name FROM reports r JOIN categories c ON r.category_id = c.id JOIN users u ON r.author_id = u.id "
+	if order := r.URL.Query().Get("order"); order != "" {
+		// order is like "created_at,desc", we need to check if it has a comma
+		if len(order) > 0 {
+			orderParts := strings.Split(order, ",")
+			if len(orderParts) == 2 {
+				// and we need to sanitize the input
+				if orderParts[1] == "asc" || orderParts[1] == "desc" {
+					query += "ORDER BY " + orderParts[0] + " " + orderParts[1] + " "
+				} else {
+					http.Error(w, "Invalid order direction", http.StatusBadRequest)
+					return
+				}
+			}
+		}
+
+	}
+	if limit := r.URL.Query().Get("limit"); limit != "" {
+		query += "LIMIT " + limit + " "
+	}
+	if offset := r.URL.Query().Get("offset"); offset != "" {
+		query += "OFFSET " + offset
+	}
+
+	rows, err := dataBase.Select(query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -38,8 +63,33 @@ func getReportsByProject(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "id")
 
 	var reports []models.Report
+	query := `
+	SELECT r.id, r.project_id, r.category_id, r.fields, r.author_id, r.created_at, r.updated_at, 
+		   c.name, u.name 
+	FROM reports r 
+	JOIN categories c ON r.category_id = c.id 
+	JOIN users u ON r.author_id = u.id 
+	WHERE r.project_id = ? 
+	`
+	if order := r.URL.Query().Get("order"); order != "" {
+		// order is like "created_at,desc", we need to check if it has a comma
 
-	rows, err := dataBase.Select("SELECT r.id, r.project_id, r.category_id, r.fields, r.author_id, r.created_at, r.updated_at, c.name, u.name FROM reports r JOIN categories c ON r.category_id = c.id JOIN users u ON r.author_id = u.id WHERE r.project_id = ?", projectID)
+		if len(order) > 0 {
+			orderParts := strings.Split(order, ",")
+			if len(orderParts) == 2 {
+				// and we need to sanitize the input
+				if orderParts[1] == "asc" || orderParts[1] == "desc" {
+					query += "ORDER BY " + orderParts[0] + " " + orderParts[1] + " "
+				} else {
+					http.Error(w, "Invalid order direction", http.StatusBadRequest)
+					return
+				}
+			}
+		}
+
+	}
+
+	rows, err := dataBase.Select(query, projectID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

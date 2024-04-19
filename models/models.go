@@ -113,6 +113,11 @@ type Field struct {
 	Type     string `json:"type"`
 	Required string `json:"required,omitempty"` // Omite si está vacío
 }
+
+type Filter struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
 type Feedback struct {
 	ID        int    `json:"id"`
 	UserID    int    `json:"user_id"`
@@ -123,12 +128,14 @@ type Feedback struct {
 }
 
 type Category struct {
-	ID         int     `json:"id"`
-	Type       string  `json:"type"`
-	Code       string  `json:"code,omitempty"`
-	Name       string  `json:"name"`
-	Fields     []Field `json:"fields,omitempty"`
-	FieldsJSON string  `json:"-"` // Usado para escanear desde la base de datos
+	ID          int      `json:"id"`
+	Type        string   `json:"type"`
+	Code        string   `json:"code,omitempty"`
+	Name        string   `json:"name"`
+	Fields      []Field  `json:"fields,omitempty"`
+	FieldsJSON  string   `json:"-"` // Usado para escanear desde la base de datos
+	Filters     []Filter `json:"filters,omitempty"`
+	FiltersJSON string   `json:"-"` // Usado para escanear desde la base de datos
 }
 type Location struct {
 	ID      int     `json:"id"`

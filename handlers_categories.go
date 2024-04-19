@@ -12,7 +12,7 @@ import (
 )
 
 func getCategories(w http.ResponseWriter, r *http.Request) {
-	rows, err := dataBase.Select("SELECT id, type, name, code, fields FROM categories")
+	rows, err := dataBase.Select("SELECT id, type, name, code, fields, filters FROM categories")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -25,7 +25,7 @@ func getCategories(w http.ResponseWriter, r *http.Request) {
 		var c models.Category
 		var codeNullString sql.NullString
 
-		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &codeNullString, &c.FieldsJSON); err != nil {
+		if err := rows.Scan(&c.ID, &c.Type, &c.Name, &codeNullString, &c.FieldsJSON, &c.FiltersJSON); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -38,6 +38,12 @@ func getCategories(w http.ResponseWriter, r *http.Request) {
 
 		if c.FieldsJSON != "" {
 			if err := json.Unmarshal([]byte(c.FieldsJSON), &c.Fields); err != nil {
+				http.Error(w, "Error al deserializar los campos: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if c.FiltersJSON != "" {
+			if err := json.Unmarshal([]byte(c.FiltersJSON), &c.Filters); err != nil {
 				http.Error(w, "Error al deserializar los campos: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -85,7 +91,21 @@ func createCategory(w http.ResponseWriter, r *http.Request) {
 		fieldsDataString = string(fieldsData)
 
 	}
-	lastInsertID, err := dataBase.Insert(true, "INSERT INTO categories (type, name, fields) VALUES (?, ?, ?)", c.Type, c.Name, fieldsDataString)
+
+	var filtersDataString string
+	if c.Filters == nil {
+		filtersDataString = "[]" // empty array
+
+	} else {
+		filtersData, err := json.Marshal(c.Filters)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		filtersDataString = string(filtersData)
+
+	}
+	lastInsertID, err := dataBase.Insert(true, "INSERT INTO categories (type, name, fields, filters) VALUES (?, ?, ?, ?)", c.Type, c.Name, fieldsDataString, filtersDataString)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -138,8 +158,15 @@ func updateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serializa los campos antes de actualizar en la base de datos
+	filtersData, err := json.Marshal(c.Filters)
+	if err != nil {
+		http.Error(w, "Error al serializar los campos: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	var old models.Category
-	rows, err := dataBase.SelectRow("SELECT id, type, name, fields FROM categories WHERE id = ?", categoryID)
+	rows, err := dataBase.SelectRow("SELECT id, type, name, fields, filters FROM categories WHERE id = ?", categoryID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Categoría no encontrada", http.StatusNotFound)
@@ -149,13 +176,18 @@ func updateCategory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := rows.Scan(&old.ID, &old.Type, &old.Name, &old.FieldsJSON); err != nil {
+	if err := rows.Scan(&old.ID, &old.Type, &old.Name, &old.FieldsJSON, &old.FiltersJSON); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Deserializa el campo fields del formato JSON para old
 	if err := json.Unmarshal([]byte(old.FieldsJSON), &old.Fields); err != nil {
+		http.Error(w, "Error al deserializar los campos: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Deserializa el campo filters del formato JSON para old
+	if err := json.Unmarshal([]byte(old.FiltersJSON), &old.Filters); err != nil {
 		http.Error(w, "Error al deserializar los campos: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -166,7 +198,7 @@ func updateCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	oldValue := string(oldValueBytes)
 
-	_, err = dataBase.Update(true, "UPDATE categories SET type = ?, name = ?, fields = ? WHERE id = ?", c.Type, c.Name, string(fieldsData), categoryID)
+	_, err = dataBase.Update(true, "UPDATE categories SET type = ?, name = ?, fields = ?, filters = ? WHERE id = ?", c.Type, c.Name, string(fieldsData), string(filtersData), categoryID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -191,7 +223,7 @@ func deleteCategory(w http.ResponseWriter, r *http.Request) {
 	categoryID := chi.URLParam(r, "id")
 
 	var old models.Category
-	rows, err := dataBase.SelectRow("SELECT id, type, name, fields FROM categories WHERE id = ?", categoryID)
+	rows, err := dataBase.SelectRow("SELECT id, type, name, fields, filters FROM categories WHERE id = ?", categoryID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Categoria no encontrada", http.StatusNotFound)
@@ -229,7 +261,7 @@ func getCategoryByID(w http.ResponseWriter, r *http.Request) {
 	var c models.Category
 	var codeNullString sql.NullString
 
-	rows, err := dataBase.SelectRow("SELECT id, code, type, name, fields FROM categories WHERE id = ?", categoryID)
+	rows, err := dataBase.SelectRow("SELECT id, code, type, name, fields, filters FROM categories WHERE id = ?", categoryID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Categoría no encontrada", http.StatusNotFound)
@@ -240,7 +272,7 @@ func getCategoryByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Asumiendo que FieldsJSON es un campo en models.Category que se utiliza para escanear el JSON crudo
-	if err := rows.Scan(&c.ID, &codeNullString, &c.Type, &c.Name, &c.FieldsJSON); err != nil {
+	if err := rows.Scan(&c.ID, &codeNullString, &c.Type, &c.Name, &c.FieldsJSON, &c.FiltersJSON); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -253,6 +285,12 @@ func getCategoryByID(w http.ResponseWriter, r *http.Request) {
 
 	if c.FieldsJSON != "" {
 		if err := json.Unmarshal([]byte(c.FieldsJSON), &c.Fields); err != nil {
+			http.Error(w, "Error al deserializar los campos: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	if c.FiltersJSON != "" {
+		if err := json.Unmarshal([]byte(c.FiltersJSON), &c.Filters); err != nil {
 			http.Error(w, "Error al deserializar los campos: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
