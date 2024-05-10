@@ -100,6 +100,7 @@ func initRoutes() *chi.Mux {
 		})
 		r.Route("/reports", func(r chi.Router) {
 			r.Get("/", getReports)
+			r.Get("/all", getReportsData)
 			r.Post("/", createReport)
 			r.Route("/{id}", func(r chi.Router) {
 				r.Get("/", getReportByID)
