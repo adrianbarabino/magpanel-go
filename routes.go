@@ -68,6 +68,9 @@ func initRoutes() *chi.Mux {
 				r.Put("/", updateClient)
 				r.Delete("/", deleteClient)
 			})
+			// Ruta adicional para chequear un cliente por su código
+			r.Get("/check/{code}", checkClientByCode)
+
 		})
 
 		r.Route("/contacts", func(r chi.Router) {

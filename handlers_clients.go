@@ -72,12 +72,12 @@ func createClient(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(c)
 }
 
-func getClientByID(w http.ResponseWriter, r *http.Request) {
-	clientID := chi.URLParam(r, "id")
+func checkClientByCode(w http.ResponseWriter, r *http.Request) {
+	clientCode := chi.URLParam(r, "code")
 
 	var c models.Client
 
-	rows, err := dataBase.SelectRow("SELECT id, code, name, address, phone, email, web, city, category_id, company FROM clients WHERE id = ?", clientID)
+	rows, err := dataBase.SelectRow("SELECT id, code, name, address, phone, email, web, city, category_id, company FROM clients WHERE code = ?", clientCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Cliente no encontrado", http.StatusNotFound)
@@ -87,6 +87,35 @@ func getClientByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows.Scan(&c.ID, &c.Code, &c.Name, &c.Address, &c.Phone, &c.Email, &c.Web, &c.City, &c.CategoryID, &c.Company)
+	// check if doesnt exists, if not return 404
+	// if exists return 200
+
+	if c.ID == 0 {
+		http.Error(w, "Cliente no encontrado", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(c)
+}
+
+func getClientByID(w http.ResponseWriter, r *http.Request) {
+	clientID := chi.URLParam(r, "id")
+
+	var c models.Client
+
+	rows, err := dataBase.SelectRow("SELECT c.id, c.code, c.name, c.address, c.phone, c.email, c.web, c.city, c.category_id, c.company, cat.name FROM clients c JOIN categories cat ON c.category_id = cat.id WHERE c.id = ?", clientID)
+	// add join to get the categoryName
+	// SELECT c.id, c.code, c.name, c.address, c.phone, c.email, c.web, c.city, c.category_id, c.company, cat.name FROM clients c JOIN categories cat ON c.category_id = cat.id WHERE c.id = ?
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Cliente no encontrado", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	rows.Scan(&c.ID, &c.Code, &c.Name, &c.Address, &c.Phone, &c.Email, &c.Web, &c.City, &c.CategoryID, &c.Company, &c.CategoryName)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(c)

@@ -21,18 +21,19 @@ type User struct {
 }
 
 type Client struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name"`
-	Code       string `json:"code,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
-	Address    string `json:"address"`
-	Phone      string `json:"phone,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
-	Email      string `json:"email"`
-	Web        string `json:"web,omitempty"`
-	City       string `json:"city"`
-	CategoryID int    `json:"category_id,omitempty"`
-	Company    string `json:"company,omitempty"`
-	CreatedAt  string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
-	UpdatedAt  string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	Code         string `json:"code,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
+	Address      string `json:"address"`
+	Phone        string `json:"phone,omitempty"` // El campo omitempty indica que el campo puede ser omitido si está vacío
+	Email        string `json:"email"`
+	Web          string `json:"web,omitempty"`
+	City         string `json:"city"`
+	CategoryID   int    `json:"category_id,omitempty"`
+	CategoryName string `json:"category_name,omitempty"`
+	Company      string `json:"company,omitempty"`
+	CreatedAt    string `json:"created_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
+	UpdatedAt    string `json:"updated_at,omitempty"` // Asume que este campo es manejado automáticamente por la base de datos
 }
 
 type Contact struct {
