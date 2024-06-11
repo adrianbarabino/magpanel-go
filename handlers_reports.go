@@ -137,6 +137,12 @@ func createReport(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error al insertar el registro de creación de reporte: %v", err)
 	}
 
+	// trigger a function for update the updated_at field in the projects table
+	_, err = dataBase.Update(false, "UPDATE projects SET updated_at = NOW() WHERE id = ?", report.ProjectID)
+	if err != nil {
+		log.Printf("Error al actualizar la fecha de actualización del proyecto: %v", err)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(report)
